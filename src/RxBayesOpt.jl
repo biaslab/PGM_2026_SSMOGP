@@ -1,7 +1,7 @@
 module RxBayesOpt
 
 using RxInfer, Distributions, LinearAlgebra, Random, Statistics
-using Plots, Optim
+using Plots, Optim, JSON
 
 include("types.jl")
 include("utils.jl")
@@ -20,6 +20,6 @@ export additive_gp_vv
 export ucb_acquisition, select_next_point
 export log_marginal_likelihood, tune_hyperparameters
 export plot_bo_step
-export setup_experiment, run_bo!
+export setup_experiment, run_bo!, save_results
 
 end # module RxBayesOpt

@@ -46,7 +46,7 @@ Mutable state that evolves during the BO loop.
 # Fields
 - `blocks`: named tuple `(A, Q, P, H)` from the state-space GP construction
 - `W::Matrix{Float64}`: mixing matrix (D × Q)
-- `R::Diagonal{Float64}`: observation noise covariance
+- `R_prior`: current belief over observation noise covariance (InverseWishart); updated each step from the posterior
 - `Y::Vector{Union{Missing, Vector{Float64}}}`: observations (standardized)
 - `μy::Vector{Float64}`: mean used for standardization
 - `σy::Vector{Float64}`: std used for standardization
@@ -54,7 +54,7 @@ Mutable state that evolves during the BO loop.
 mutable struct BOState
     blocks::NamedTuple{(:A, :Q, :P, :H)}
     W::Matrix{Float64}
-    R::Diagonal{Float64, Vector{Float64}}
+    R_prior::Any
     Y::Vector{Union{Missing, Vector{Float64}}}
     μy::Vector{Float64}
     σy::Vector{Float64}
@@ -71,6 +71,10 @@ Summary of a completed Bayesian optimization run.
 - `best_y::Vector{Float64}`: output vector at the best point (original scale)
 - `observed_indices::Vector{Int}`: all observed chain indices
 - `n_iterations::Int`: number of BO iterations completed
+- `R_learned::Matrix{Float64}`: posterior mean of observation noise covariance
+- `best_value_history::Vector{Float64}`: best scalarized value after each step
+- `n_observed_history::Vector{Int}`: number of observed points after each step
+- `R_diag_history::Vector{Vector{Float64}}`: diagonal of R posterior mean after each step
 """
 struct BOResult
     best_index::Int
@@ -78,6 +82,10 @@ struct BOResult
     best_y::Vector{Float64}
     observed_indices::Vector{Int}
     n_iterations::Int
+    R_learned::Matrix{Float64}
+    best_value_history::Vector{Float64}
+    n_observed_history::Vector{Int}
+    R_diag_history::Vector{Vector{Float64}}
 end
 
 """
@@ -99,4 +107,6 @@ Print a summary of the BO run results.
 function print_summary(result::BOResult)
     @info "BO Run Complete" result.n_iterations n_observed=length(result.observed_indices) best_index=result.best_index best_value=round(result.best_value; digits=4)
     @info "Best output vector" result.best_y
+    @info "Learned R (posterior mean diagonal)" round.(diag(result.R_learned); digits=4)
+    @info "History" steps_tracked=length(result.best_value_history) final_best=round(result.best_value_history[end]; digits=4)
 end

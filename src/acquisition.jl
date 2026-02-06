@@ -9,7 +9,7 @@ Returns:
 - `σ_pred`: predicted stds (original scale), length-N vector of vectors
 """
 function ucb_acquisition(res, state::BOState, cfg::ExperimentConfig, N::Int)
-    pred_output = res.posteriors[:my]
+    pred_output = last(res.posteriors[:my])
     μ_pred_std = mean.(pred_output)
     σ_pred_std = [sqrt.(var(pred_output[i])) for i in 1:N]
 

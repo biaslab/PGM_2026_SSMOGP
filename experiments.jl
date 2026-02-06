@@ -22,6 +22,7 @@ cfg = ExperimentConfig()
 print_config(cfg)
 
 (; Xo, Δ, state, Ytrue) = setup_experiment(cfg, eval_blackbox)
-result = run_bo!(cfg, eval_blackbox; Xo, Δ, state, Ytrue)
+(; result, frames) = run_bo!(cfg, eval_blackbox; Xo, Δ, state, Ytrue)
 
 print_summary(result)
+save_results(result, cfg, frames)
