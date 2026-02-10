@@ -17,7 +17,15 @@ function matern32_blocks_from_Δ(Δ::AbstractVector; ℓ=1.0, σ2=1.0)
     F = [0.0 1.0; -λ^2 -2λ]
     P∞ = [σ2 0.0; 0.0 λ^2*σ2]
     A = [exp(F * Δ[i]) for i in eachindex(Δ)]
-    Q = [P∞ - A[i] * P∞ * A[i]' for i in eachindex(Δ)]
+    Q = Vector{Matrix{Float64}}(undef, length(Δ))
+    for i in eachindex(Δ)
+        Qi = P∞ - A[i] * P∞ * A[i]'
+        Qi = (Qi + Qi') / 2  # symmetrize
+        # Clamp negative eigenvalues to enforce PSD
+        eig = eigen(Symmetric(Qi))
+        eig.values .= max.(eig.values, 1e-12)
+        Q[i] = eig.vectors * Diagonal(eig.values) * eig.vectors'
+    end
     H = [1.0, 0.0]
     (; A, Q, P∞, H)
 end
@@ -40,8 +48,8 @@ function additive_multioutput_blocks_from_Δ(Δ; ℓs, σ2s, W::AbstractMatrix)
     @assert QW == Q
     lat = [matern32_blocks_from_Δ(Δ; ℓ=ℓs[q], σ2=σ2s[q]) for q in 1:Q]
     A_big = [blockdiag((lat[q].A[i] for q in 1:Q)...) for i in eachindex(Δ)]
-    Q_big = [blockdiag((lat[q].Q[i] for q in 1:Q)...) for i in eachindex(Δ)]
-    P_big = blockdiag((lat[q].P∞ for q in 1:Q)...)
+    Q_big = [Matrix(Hermitian(blockdiag((lat[q].Q[i] for q in 1:Q)...))) for i in eachindex(Δ)]
+    P_big = Matrix(Hermitian(blockdiag((lat[q].P∞ for q in 1:Q)...)))
     H_big = hcat([W[:, q] * lat[q].H' for q in 1:Q]...)
     (; A=A_big, Q=Q_big, P=P_big, H=H_big)
 end

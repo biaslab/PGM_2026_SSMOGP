@@ -1,12 +1,33 @@
 # RxBayesOpt
 
+**Scalable Multi-Output Bayesian Optimization via State-Space GPs and Reactive Message Passing**
+
 Multi-output Bayesian Optimization using state-space Gaussian Processes and reactive message passing inference via [RxInfer.jl](https://github.com/ReactiveBayes/RxInfer.jl).
 
-## Overview
+## Key Ideas
 
-This project implements Bayesian Optimization (BO) for expensive black-box functions with **multiple outputs** in **high-dimensional input spaces**. Instead of the standard kernel-matrix GP (which scales O(N³)), the surrogate model is a **state-space GP** that scales linearly O(N) by exploiting the Markov structure of the Matérn 3/2 covariance function.
+1. **O(N) surrogate model** — Standard GP-based BO uses kernel matrices with O(N³) cost. We represent the Matérn 3/2 GP as a state-space model (linear dynamical system), reducing inference to a single Kalman filter pass in O(N).
 
-Inference is performed via **variational message passing** in RxInfer, which opens the door for reactive, online updates as new observations arrive.
+2. **Multi-output via state-space LMC** — Multiple correlated outputs are modeled through Q independent latent state-space GPs combined by a mixing matrix W (Linear Model of Coregionalization). The block-diagonal structure preserves the O(N) scaling.
+
+3. **NN chain ordering for high-dimensional inputs** — State-space GPs require 1D-ordered inputs. A greedy nearest-neighbor chain maps high-dimensional points (d=20) onto a 1D sequence that preserves local distance structure, with inter-point distances serving as the state-space time steps.
+
+4. **Unified inference via message passing** — The entire model (latent GP states, predictions, noise covariance) is expressed as a single probabilistic model in RxInfer. Inference is automated variational message passing on the factor graph — no hand-coded Kalman filter needed.
+
+5. **Online Bayesian noise learning** — The observation noise covariance R is given an InverseWishart prior and learned jointly with the GP states through message passing. The posterior from each BO step becomes the prior for the next, giving fully Bayesian online adaptation of the full D×D noise covariance at zero extra cost.
+
+6. **Reactive architecture** — RxInfer's reactive message passing framework enables potential streaming/online BO where the surrogate updates incrementally as new observations arrive, rather than re-running inference from scratch.
+
+## Why This Matters
+
+| Aspect | Standard GP-BO | This work |
+|--------|---------------|-----------|
+| Surrogate cost | O(N³) kernel matrix | O(N) Kalman filtering |
+| Multi-output | Separate GPs or kernel-matrix LMC | State-space LMC (block-diagonal) |
+| Noise model | Fixed or point-estimated | Full Bayesian (InverseWishart posterior) |
+| Inference | Custom GP algebra | Declarative model + automated message passing |
+| High-dim inputs | Native (but O(N³)) | NN chain ordering heuristic |
+| Online updates | Full recomputation | Incremental (reactive message passing) |
 
 ## Methods
 
@@ -24,7 +45,11 @@ Multiple latent GP components (Q=8) are combined through a **mixing matrix W** (
 
 ### RxInfer Message Passing Inference
 
-The state-space GP is expressed as an `@model` in RxInfer, which performs (variational) message passing on the corresponding factor graph. This is the key novelty: rather than hand-coding a Kalman filter, the model is declared probabilistically and inference is automated. RxInfer's reactive architecture also enables potential streaming/online BO updates without re-running inference from scratch.
+The state-space GP is expressed as an `@model` in RxInfer, which performs (variational) message passing on the corresponding factor graph. Rather than hand-coding a Kalman filter, the model is declared probabilistically and inference is automated. RxInfer's reactive architecture also enables potential streaming/online BO updates without re-running inference from scratch.
+
+### Online Observation Noise Learning
+
+The observation noise covariance R is treated as a random variable with an **InverseWishart prior**. At each BO step, variational message passing infers a posterior over R jointly with the latent GP states. This posterior becomes the prior for the next step, yielding a fully Bayesian online estimate of the full D×D noise covariance. This is in contrast to standard approaches that either fix R or re-estimate it via point optimization.
 
 ### UCB Acquisition with Scalarization
 
@@ -37,12 +62,6 @@ UCB(x) = sᵀμ(x) + β · √(sᵀdiag(Σ(x))s)
 ### Hyperparameter Tuning (Type-II ML)
 
 An LBFGS-based optimizer maximizes the log marginal likelihood (computed via a Kalman filter forward pass) with respect to kernel length-scales, signal variances, the mixing matrix W, and observation noise. Controlled by `ExperimentConfig.tune_every` (0 = disabled).
-
-## What is Novel
-
-1. **Multi-output BO via state-space GP + message passing** — Combining the O(N) state-space GP formulation with RxInfer's automated message passing for Bayesian optimization is, to our knowledge, a new approach.
-2. **Nearest-neighbor chain ordering** — A practical heuristic enabling state-space GPs in high-dimensional input spaces without dimensionality reduction.
-3. **Reactive inference for BO** — Using RxInfer opens the path toward truly online/streaming Bayesian optimization where the surrogate updates incrementally.
 
 ## Project Structure
 
@@ -69,6 +88,7 @@ src/
 - **Statistics** — Mean, std, median
 - **Optim.jl** — Hyperparameter optimization (LBFGS)
 - **Plots.jl** — Visualization and GIF generation
+- **JSON** — Performance metrics export
 - **Random** — Reproducible RNG
 
 ## Running
@@ -78,8 +98,7 @@ julia --project=. -e 'using Pkg; Pkg.instantiate()'
 julia --project=. experiments.jl
 ```
 
-This produces:
-- Config printout at start
-- Progress logs every 10 steps
-- Results summary at end
-- `bo_multioutput_chain.gif` — animation of the BO loop showing predictions, UCB, and per-output fits over 200 steps
+This produces outputs in `data/`:
+- `data/metrics.json` — Per-step convergence history (best value, observations, R diagonal), final results, and experiment config. Ready for paper figures.
+- `data/bo_last_state.png` — Snapshot of the final BO step (3-panel: predictions, UCB, per-output fits)
+- `data/bo_animation.gif` — Animated GIF of all BO steps

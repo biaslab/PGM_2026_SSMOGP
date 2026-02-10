@@ -1,0 +1,254 @@
+schema: '2.0'
+stages:
+  convergence:
+    cmd: julia --project=. experiments/convergence.jl
+    deps:
+    - path: experiments/convergence.jl
+      hash: md5
+      md5: c32adf276fe337e6c3737ae2b5094904
+      size: 1980
+    - path: src
+      hash: md5
+      md5: 918b604b824429a17f25dcfe8e34cd83.dir
+      size: 47744
+      nfiles: 12
+    params:
+      params.yaml:
+        convergence:
+          N: 300
+          d: 6
+          D: 4
+          Q: 3
+          steps: 100
+          n_seed: 10
+          beta: 2.0
+          R_diag_init: 0.2
+          log_every: 10
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          ls:
+          - 1.0
+          - 2.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 3.0
+    outs:
+    - path: data/convergence/comparison.json
+      hash: md5
+      md5: c702bafe815c9d83e51750da8ac97b0e
+      size: 101419
+    - path: data/convergence/convergence.png
+      hash: md5
+      md5: 11e917d80a5b6bdaa73afa81a3eb0471
+      size: 32194
+    - path: data/convergence/metrics.json
+      hash: md5
+      md5: 544999c4f5c3693f3294bd653ad3d2b0
+      size: 207
+    - path: data/convergence/timing.png
+      hash: md5
+      md5: b598c9457d2e97acb63825f540440f85
+      size: 40264
+  scaling:
+    cmd: julia --project=. experiments/scaling.jl
+    deps:
+    - path: experiments/scaling.jl
+      hash: md5
+      md5: a15f5ceacaa2a47c2960b0806a1511ae
+      size: 4883
+    - path: src
+      hash: md5
+      md5: 719aa52078f5449afb64ac495fc258c5.dir
+      size: 46486
+      nfiles: 12
+    params:
+      params.yaml:
+        scaling:
+          N: 1000
+          d: 6
+          D: 4
+          Q: 3
+          steps: 200
+          n_seed: 10
+          beta: 2.0
+          R_diag_init: 0.2
+          log_every: 20
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 2.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 3.0
+    outs:
+    - path: data/scaling/comparison.json
+      hash: md5
+      md5: b1ab85c8da23940838cb6b2dade7661b
+      size: 80140
+    - path: data/scaling/convergence.png
+      hash: md5
+      md5: bdc071c6d1db2289a6bfacbf7f340995
+      size: 30014
+    - path: data/scaling/metrics.json
+      hash: md5
+      md5: 5d7eec45fd2ba03a8f342f3e4c4c53aa
+      size: 254
+    - path: data/scaling/scaling_cumulative.png
+      hash: md5
+      md5: 1b574306ed8101496719880724895693
+      size: 39417
+    - path: data/scaling/scaling_perstep.png
+      hash: md5
+      md5: 450137bf2c7013d34b8d4d8e5c156330
+      size: 36147
+    - path: data/scaling/timing.png
+      hash: md5
+      md5: 560203da64cb11c3ab5bbe52226e9c76
+      size: 43898
+  highdim:
+    cmd: julia --project=. experiments/highdim.jl
+    deps:
+    - path: experiments/highdim.jl
+      hash: md5
+      md5: ba05674bb11b93a71a97143cbae7db6f
+      size: 2108
+    - path: src
+      hash: md5
+      md5: f1f9b2825dfc673f527d821e74624efb.dir
+      size: 46533
+      nfiles: 12
+    params:
+      params.yaml:
+        highdim:
+          N: 500
+          d: 4
+          D: 12
+          Q: 6
+          steps: 100
+          n_seed: 15
+          beta: 2.0
+          R_diag_init: 0.2
+          log_every: 10
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          ls:
+          - 1.0
+          - 1.5
+          - 2.0
+          - 2.5
+          - 3.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 2.0
+          - 2.0
+          - 1.0
+          - 1.0
+    outs:
+    - path: data/highdim/comparison.json
+      hash: md5
+      md5: 76b6e24db787fa28f5401dc1a9a1441c
+      size: 76999
+    - path: data/highdim/convergence.png
+      hash: md5
+      md5: d404d163bd004189acce13e16d3c3dde
+      size: 32277
+    - path: data/highdim/metrics.json
+      hash: md5
+      md5: 3efc7bb5877a0cdb2776375fccb10012
+      size: 229
+    - path: data/highdim/timing.png
+      hash: md5
+      md5: 6af6dec677efe88309f839344e16bef7
+      size: 45045
+  partial_obs:
+    cmd: julia --project=. experiments/partial_obs.jl
+    deps:
+    - path: experiments/partial_obs.jl
+      hash: md5
+      md5: 6f61b848fd84459c7bd028dad8a56ae2
+      size: 2614
+    - path: src
+      hash: md5
+      md5: ccc543012bd695c6bf16ac8c373e1cfa.dir
+      size: 57559
+      nfiles: 12
+    params:
+      params.yaml:
+        partial_obs:
+          N: 500
+          d: 4
+          D: 12
+          Q: 6
+          n_spatial: 3
+          n_temporal: 4
+          steps: 150
+          n_seed: 10
+          beta: 2.0
+          R_diag_init: 0.2
+          log_every: 10
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 1.5
+          - 2.0
+          - 2.5
+          - 3.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 2.0
+          - 2.0
+          - 1.0
+          - 1.0
+    outs:
+    - path: data/partial_obs/comparison.json
+      hash: md5
+      md5: 643a093aa3a78d42b2a15134f03ed96c
+      size: 149662
+    - path: data/partial_obs/convergence.png
+      hash: md5
+      md5: 5c495f063232a1c902d1c15e116d50dc
+      size: 41047
+    - path: data/partial_obs/metrics.json
+      hash: md5
+      md5: 4928a64bb78d02348838398526ea20a0
+      size: 368
+    - path: data/partial_obs/timing.png
+      hash: md5
+      md5: fcb4398114d33285b8d4bbd84b317766
+      size: 47881

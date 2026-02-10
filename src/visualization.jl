@@ -1,4 +1,32 @@
 """
+    save_plot(plot_fn, base_path)
+
+Save a plot as both PNG and TikZ (.tikz).
+`plot_fn` is a zero-argument function that creates and returns a Plots.jl plot.
+`base_path` should be without extension (e.g., "data/convergence").
+"""
+function save_plot(plot_fn::Function, base_path; tikz::Bool=true)
+    Base.invokelatest(gr)
+    plt = Base.invokelatest(plot_fn)
+    Base.invokelatest(savefig, plt, base_path * ".png")
+    @info "Saved $(base_path).png"
+
+    tikz || return plt
+
+    try
+        Base.invokelatest(pgfplotsx)
+        plt_tikz = Base.invokelatest(plot_fn)
+        Base.invokelatest(savefig, plt_tikz, base_path * ".tikz")
+        @info "Saved $(base_path).tikz"
+    catch e
+        @warn "Failed to save tikz for $base_path" exception=e
+    finally
+        Base.invokelatest(gr)
+    end
+    plt
+end
+
+"""
     plot_bo_step(step, k, state, acq, Ytrue, cfg) -> Plot
 
 Generate the 3-panel BO visualization for a single step.
@@ -11,12 +39,12 @@ Panels:
 # Arguments
 - `step`: current BO iteration number
 - `k`: chain index of the next point to evaluate
-- `state`: current `BOState`
+- `state`: current `AbstractBOState`
 - `acq`: named tuple from `ucb_acquisition` (ucb, μ_pred, σ_pred, μs, σs)
 - `Ytrue`: ground-truth outputs for all N points
 - `cfg`: `ExperimentConfig`
 """
-function plot_bo_step(step::Int, k::Int, state::BOState, acq, Ytrue, cfg::ExperimentConfig)
+function plot_bo_step(step::Int, k::Int, state::AbstractBOState, acq, Ytrue, cfg::ExperimentConfig)
     N = cfg.N
     s = cfg.s
     observed = findall(!ismissing, state.Y)

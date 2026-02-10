@@ -1,4 +1,12 @@
 """
+    AbstractBOState
+
+Abstract supertype for Bayesian optimization state objects.
+Subtypes must have fields `Y`, `μy`, `σy`.
+"""
+abstract type AbstractBOState end
+
+"""
     ExperimentConfig
 
 Immutable configuration for a multi-output Bayesian optimization experiment.
@@ -36,26 +44,34 @@ Immutable configuration for a multi-output Bayesian optimization experiment.
     animate::Bool     = true
     log_every::Int    = 10
     seed::Int         = 0
+    obs_pattern::Symbol  = :full
+    obs_frac::Float64    = 1.0
 end
 
 """
-    BOState
+    POState <: AbstractBOState
 
-Mutable state that evolves during the BO loop.
+Mutable state for partial-observation BO with per-output scalar noise.
 
 # Fields
 - `blocks`: named tuple `(A, Q, P, H)` from the state-space GP construction
 - `W::Matrix{Float64}`: mixing matrix (D × Q)
-- `R_prior`: current belief over observation noise covariance (InverseWishart); updated each step from the posterior
-- `Y::Vector{Union{Missing, Vector{Float64}}}`: observations (standardized)
+- `τ::Vector{Float64}`: per-output noise precisions (length D)
+- `e_vecs::Vector{Vector{Float64}}`: standard basis vectors [e_1, ..., e_D]
+- `mask::BitMatrix`: N × D observation mask (true = observed)
+- `Y::Vector{Union{Missing, Vector{Float64}}}`: point-level observations (for BO logic)
+- `Y_flat::Vector{Union{Missing, Float64}}`: flat N*D vector (for model)
 - `μy::Vector{Float64}`: mean used for standardization
 - `σy::Vector{Float64}`: std used for standardization
 """
-mutable struct BOState
+mutable struct POState <: AbstractBOState
     blocks::NamedTuple{(:A, :Q, :P, :H)}
     W::Matrix{Float64}
-    R_prior::Any
+    τ::Vector{Float64}
+    e_vecs::Vector{Vector{Float64}}
+    mask::BitMatrix
     Y::Vector{Union{Missing, Vector{Float64}}}
+    Y_flat::Vector{Union{Missing, Float64}}
     μy::Vector{Float64}
     σy::Vector{Float64}
 end
@@ -75,6 +91,8 @@ Summary of a completed Bayesian optimization run.
 - `best_value_history::Vector{Float64}`: best scalarized value after each step
 - `n_observed_history::Vector{Int}`: number of observed points after each step
 - `R_diag_history::Vector{Vector{Float64}}`: diagonal of R posterior mean after each step
+- `step_times::Vector{Float64}`: wall-clock time (seconds) for each BO step
+- `method::String`: identifier for the surrogate model method
 """
 struct BOResult
     best_index::Int
@@ -86,6 +104,8 @@ struct BOResult
     best_value_history::Vector{Float64}
     n_observed_history::Vector{Int}
     R_diag_history::Vector{Vector{Float64}}
+    step_times::Vector{Float64}
+    method::String
 end
 
 """
@@ -105,7 +125,8 @@ end
 Print a summary of the BO run results.
 """
 function print_summary(result::BOResult)
-    @info "BO Run Complete" result.n_iterations n_observed=length(result.observed_indices) best_index=result.best_index best_value=round(result.best_value; digits=4)
+    total_time = sum(result.step_times)
+    @info "BO Run Complete" method=result.method result.n_iterations n_observed=length(result.observed_indices) best_index=result.best_index best_value=round(result.best_value; digits=4) total_time=round(total_time; digits=2)
     @info "Best output vector" result.best_y
     @info "Learned R (posterior mean diagonal)" round.(diag(result.R_learned); digits=4)
     @info "History" steps_tracked=length(result.best_value_history) final_best=round(result.best_value_history[end]; digits=4)

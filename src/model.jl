@@ -1,27 +1,23 @@
 # RxInfer probabilistic model for the additive multi-output state-space GP
-# with online observation noise learning.
+# with per-output scalar observation noise.
 #
-# Defines a linear dynamical system with a learnable noise covariance:
-# - R ~ prior_R                  (InverseWishart prior on observation noise)
-# - f[0] ~ MvNormal(0, P)       (stationary prior)
+# Defines a linear dynamical system:
+# - f[0] ~ MvNormal(0, P)               (stationary prior)
 # - f[i] ~ MvNormal(A[i]·f[i-1], Q[i])  (state transition)
-# - Y[i] ~ MvNormal(H·f[i], R)  (observation)
+# - Y[(i-1)*D + d] ~ NormalMeanPrecision(dot(e_d, H·f[i]), τ[d])  (per-output obs)
 #
-# The posterior over R is inferred via variational message passing and
-# fed back as the prior for the next BO step, enabling online noise adaptation.
-# Missing entries in Y are predicted by RxInfer's message passing.
+# Each output d at each chain position i is an independent scalar observation.
+# Missing entries in Y propagate naturally via message passing.
+# No VMP constraints needed (all noise precisions are fixed).
 
-@model function additive_gp_vv(Y, P, A, Q, H, prior_R)
-    R ~ prior_R
+@model function additive_gp_po(Y, P, A, Q, H, τ, e_vecs, N, D)
     fprev ~ MvNormal(μ=zeros(size(P, 1)), Σ=P)
-    for i in eachindex(Y)
+    for i in 1:N
         f[i] ~ MvNormal(μ=A[i] * fprev, Σ=Q[i])
         my[i] := H * f[i]
-        Y[i] ~ MvNormal(μ=my[i], Σ=R)
+        for d in 1:D
+            Y[(i-1)*D + d] ~ NormalMeanPrecision(dot(e_vecs[d], my[i]), τ[d])
+        end
         fprev = f[i]
     end
-end
-
-RxInfer.GraphPPL.default_constraints(::typeof(additive_gp_vv)) = @constraints begin
-    q(R, my) = q(R)q(my)
 end

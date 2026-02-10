@@ -1,0 +1,15 @@
+stages:
+  partial_obs:
+    cmd: julia --project=. experiments/partial_obs.jl
+    deps:
+      - experiments/partial_obs.jl
+      - src
+    params:
+      - partial_obs
+    outs:
+      - data/partial_obs/comparison.json
+      - data/partial_obs/convergence.png
+      - data/partial_obs/timing.png
+    metrics:
+      - data/partial_obs/metrics.json:
+          cache: false
