@@ -132,3 +132,33 @@ function make_environmental(; n_spatial::Int=3, n_temporal::Int=4)
         y
     end
 end
+
+"""
+    make_synthetic_1d(; D=6, Q=3, W_seed=42) -> Function
+
+1D multi-output synthetic benchmark based on sinusoidal latent functions.
+
+Q latent functions are sinusoids with distinct frequencies and phases:
+`f_q(u) = sin(q * u + (q-1) * π/Q)` for q = 1..Q, where u ∈ [0, 2π].
+
+A fixed mixing matrix W (D × Q) produces D correlated outputs. In 1D the
+NN chain ordering is the natural ordering, so the SS-GP is exact — useful
+for cleanly isolating scaling comparisons without chain ordering artifacts.
+
+Input: single standardized scalar, mapped internally to [0, 2π] via sigmoid.
+Output: D-dimensional vector.
+"""
+function make_synthetic_1d(; D::Int=6, Q::Int=3, W_seed::Int=42)
+    rng = MersenneTwister(W_seed)
+    W_true = randn(rng, D, Q) * 0.3
+    for d in 1:D
+        q = ((d - 1) % Q) + 1
+        W_true[d, q] += 0.7
+    end
+
+    function(x::AbstractVector{<:Real})
+        u = _sigmoid(x[1]) * 2π
+        f = [sin(q * u + (q - 1) * π / Q) for q in 1:Q]
+        W_true * f
+    end
+end

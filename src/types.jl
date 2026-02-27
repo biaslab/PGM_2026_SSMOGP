@@ -109,6 +109,51 @@ struct BOResult
 end
 
 """
+    SDResult
+
+Summary of a completed sequential design run (Bayesian quadrature or active learning).
+
+# Fields
+- `observed_indices::Vector{Int}`: all observed chain indices
+- `n_iterations::Int`: number of iterations completed
+- `integral_error_history::Vector{Float64}`: integral error after each step (BQ metric)
+- `rmse_history::Vector{Float64}`: RMSE after each step (AL metric)
+- `mnll_history::Vector{Float64}`: mean negative log-likelihood after each step
+- `n_observed_history::Vector{Int}`: number of observed points after each step
+- `step_times::Vector{Float64}`: wall-clock time (seconds) for each step
+- `method::String`: identifier for the surrogate model method
+"""
+struct SDResult
+    observed_indices::Vector{Int}
+    n_iterations::Int
+    integral_error_history::Vector{Float64}
+    rmse_history::Vector{Float64}
+    mnll_history::Vector{Float64}
+    n_observed_history::Vector{Int}
+    step_times::Vector{Float64}
+    method::String
+end
+
+"""
+    print_summary(result::SDResult)
+
+Print a summary of the sequential design run results.
+"""
+function print_summary(result::SDResult)
+    total_time = sum(result.step_times)
+    @info "SD Run Complete" method=result.method result.n_iterations n_observed=length(result.observed_indices) total_time=round(total_time; digits=2)
+    if !isempty(result.integral_error_history)
+        @info "Final integral error" ie=round(result.integral_error_history[end]; digits=6)
+    end
+    if !isempty(result.rmse_history)
+        @info "Final RMSE" rmse=round(result.rmse_history[end]; digits=6)
+    end
+    if !isempty(result.mnll_history)
+        @info "Final MNLL" mnll=round(result.mnll_history[end]; digits=6)
+    end
+end
+
+"""
     print_config(cfg::ExperimentConfig)
 
 Print experiment configuration to the log.

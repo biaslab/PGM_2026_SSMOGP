@@ -198,9 +198,9 @@ stages:
       size: 2614
     - path: src
       hash: md5
-      md5: ccc543012bd695c6bf16ac8c373e1cfa.dir
-      size: 57559
-      nfiles: 12
+      md5: 007c22ef0c80839c958586fa1b33385c.dir
+      size: 76257
+      nfiles: 13
     params:
       params.yaml:
         partial_obs:
@@ -210,8 +210,8 @@ stages:
           Q: 6
           n_spatial: 3
           n_temporal: 4
-          steps: 150
-          n_seed: 10
+          steps: 10
+          n_seed: 5
           beta: 2.0
           R_diag_init: 0.2
           log_every: 10
@@ -238,17 +238,141 @@ stages:
     outs:
     - path: data/partial_obs/comparison.json
       hash: md5
-      md5: 643a093aa3a78d42b2a15134f03ed96c
-      size: 149662
+      md5: 6d15722229723375cd85e2a2c637416b
+      size: 13653
     - path: data/partial_obs/convergence.png
       hash: md5
-      md5: 5c495f063232a1c902d1c15e116d50dc
-      size: 41047
+      md5: 927de34aac368c67e0f33d1c3597da74
+      size: 15459
+    - path: data/partial_obs/convergence.tikz
+      hash: md5
+      md5: 4f2735a884c473d1ea2a3f88e31a4192
+      size: 14472
     - path: data/partial_obs/metrics.json
       hash: md5
-      md5: 4928a64bb78d02348838398526ea20a0
-      size: 368
+      md5: 2ac00bc5f24d903e8d45f0107dc2c4f4
+      size: 343
     - path: data/partial_obs/timing.png
       hash: md5
-      md5: fcb4398114d33285b8d4bbd84b317766
-      size: 47881
+      md5: b86faafe1f665c35afa4086eddb88a91
+      size: 12183
+    - path: data/partial_obs/timing.tikz
+      hash: md5
+      md5: 2c2b9bd3df03dd05a1790636aa52930b
+      size: 6360
+  quadrature:
+    cmd: julia --project=. experiments/quadrature.jl
+    deps:
+    - path: experiments/quadrature.jl
+      hash: md5
+      md5: 9c385256ef6ec9a8a95c079d16ddca92
+      size: 2205
+    - path: src
+      hash: md5
+      md5: 3c90efca9edd2bf0cfc2a4d9540a48d6.dir
+      size: 78165
+      nfiles: 13
+    params:
+      params.yaml:
+        quadrature:
+          N: 200
+          d: 1
+          D: 6
+          Q: 3
+          steps: 100
+          n_seed: 5
+          R_diag_init: 0.1
+          log_every: 5
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 1.5
+          - 2.0
+          sigma2s:
+          - 3.0
+          - 2.0
+          - 1.0
+    outs:
+    - path: data/quadrature/comparison.json
+      hash: md5
+      md5: fdcef8bf4b687c4409f7308b71f7b998
+      size: 23200
+    - path: data/quadrature/metrics.json
+      hash: md5
+      md5: 138870536155982a44a707b72f92858a
+      size: 293
+    - path: data/quadrature/timing.png
+      hash: md5
+      md5: 2e97313d83e71e4e8096b33d2ded659e
+      size: 9352
+    - path: data/quadrature/timing.tikz
+      hash: md5
+      md5: b24f77e02fae86914fb93fdd66209e39
+      size: 11253
+  active_learning:
+    cmd: julia --project=. experiments/active_learning.jl
+    deps:
+    - path: experiments/active_learning.jl
+      hash: md5
+      md5: a6ff85c8948d5355289a4d7e17c569ff
+      size: 2863
+    - path: src
+      hash: md5
+      md5: 3c90efca9edd2bf0cfc2a4d9540a48d6.dir
+      size: 78165
+      nfiles: 13
+    params:
+      params.yaml:
+        active_learning:
+          N: 500
+          d: 4
+          D: 12
+          Q: 6
+          n_spatial: 3
+          n_temporal: 4
+          steps: 30
+          n_seed: 5
+          R_diag_init: 0.2
+          log_every: 10
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 1.5
+          - 2.0
+          - 2.5
+          - 3.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 2.0
+          - 2.0
+          - 1.0
+          - 1.0
+    outs:
+    - path: data/active_learning/comparison.json
+      hash: md5
+      md5: a21d4e9782dd61f7018f03764a729310
+      size: 17239
+    - path: data/active_learning/metrics.json
+      hash: md5
+      md5: 5fdf7a9cbc28aee20e5aa39a78cb48d1
+      size: 540
+    - path: data/active_learning/timing.png
+      hash: md5
+      md5: 26cc5b23d209cbb6d7112129f8ad2d79
+      size: 12615
+    - path: data/active_learning/timing.tikz
+      hash: md5
+      md5: 98f8fcef6428465978452dc1ec7b4b2f
+      size: 9012

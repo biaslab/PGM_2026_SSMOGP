@@ -9,7 +9,24 @@ stages:
     outs:
       - data/partial_obs/comparison.json
       - data/partial_obs/convergence.png
+      - data/partial_obs/convergence.tikz
       - data/partial_obs/timing.png
+      - data/partial_obs/timing.tikz
     metrics:
       - data/partial_obs/metrics.json:
+          cache: false
+
+  quadrature:
+    cmd: julia --project=. experiments/quadrature.jl
+    deps:
+      - experiments/quadrature.jl
+      - src
+    params:
+      - quadrature
+    outs:
+      - data/quadrature/comparison.json
+      - data/quadrature/timing.png
+      - data/quadrature/timing.tikz
+    metrics:
+      - data/quadrature/metrics.json:
           cache: false

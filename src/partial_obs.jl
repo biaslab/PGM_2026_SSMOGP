@@ -536,31 +536,33 @@ function _plot_po_comparison(results, output_dir)
     _nanstd(x)  = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
     _nanmedian(x) = (v = filter(!isnan, x); isempty(v) ? NaN : median(v))
 
-    n_seeds = length(results)
     steps = 1:max_steps
+
+    linestyles = [:solid, :dash, :solid, :dash]
+    theme_kw = publication_theme_kwargs()
 
     # Plot 1: Convergence
     save_plot(joinpath(output_dir, "convergence")) do
-        p = plot(xlabel="BO Step", ylabel="Best Scalarized Value",
-                 title="Partial Observation: Convergence ($n_seeds seeds)")
-        for (m, lab, col) in zip(methods, labels, colors)
+        p = plot(; xlabel="BO Step", ylabel="Best Scalarized Value",
+                 legend=:bottomright, theme_kw...)
+        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
             histories = hcat([_pad(r[m]["best_value_history"], max_steps) for r in results]...)
             m_mean = [_nanmean(histories[i, :]) for i in 1:max_steps]
             m_std  = [_nanstd(histories[i, :])  for i in 1:max_steps]
             plot!(p, steps, m_mean, ribbon=m_std, fillalpha=0.15, lw=2,
-                  label=lab, color=col)
+                  label=lab, color=col, linestyle=ls)
         end
         p
     end
 
     # Plot 2: Timing per step
     save_plot(joinpath(output_dir, "timing")) do
-        p = plot(xlabel="BO Step", ylabel="Median Time per Step (s)", yscale=:log10,
-                 title="Partial Observation: Timing ($n_seeds seeds)")
-        for (m, lab, col) in zip(methods, labels, colors)
+        p = plot(; xlabel="BO Step", ylabel="Median Time per Step (s)", yscale=:log10,
+                 legend=:topright, theme_kw...)
+        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
             times = hcat([_pad(r[m]["step_times"], max_steps) for r in results]...)
             t_med = [_nanmedian(times[i, :]) for i in 1:max_steps]
-            plot!(p, steps, t_med, lw=2, label=lab, color=col)
+            plot!(p, steps, t_med, lw=2, label=lab, color=col, linestyle=ls)
         end
         p
     end

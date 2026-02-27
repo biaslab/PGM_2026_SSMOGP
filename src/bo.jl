@@ -27,7 +27,7 @@ function setup_experiment(cfg::ExperimentConfig, eval_fn)
     σx = vec(std(X, dims=1)) .+ eps()
     X = (X .- μx') ./ σx'
 
-    order = nn_chain_order(X)
+    order = cfg.d == 1 ? sortperm(X[:, 1]) : nn_chain_order(X)
     Xo = X[order, :]
 
     Δ = zeros(cfg.N)

@@ -1,4 +1,21 @@
 """
+    publication_theme_kwargs(; single_column=true, nrows=1, ncols=1, conference=:ProbNum25)
+
+Return a NamedTuple of Plots.jl keyword arguments for publication-quality figures
+using the TuePlots.jl theme settings.
+
+`font=false` because Plots.jl doesn't support it; PGFPlotsX handles fonts via LaTeX.
+"""
+function publication_theme_kwargs(; single_column=true, nrows=1, ncols=1, conference=:ProbNum25)
+    TuePlots.get_plotsjl_theme_kwargs(
+        TuePlots.SETTINGS[conference];
+        font=false, fontsize=true, figsize=true,
+        single_column=single_column, nrows=nrows, ncols=ncols,
+        thickness_scaling=true,
+    )
+end
+
+"""
     save_plot(plot_fn, base_path)
 
 Save a plot as both PNG and TikZ (.tikz).
@@ -48,29 +65,31 @@ function plot_bo_step(step::Int, k::Int, state::AbstractBOState, acq, Ytrue, cfg
     N = cfg.N
     s = cfg.s
     observed = findall(!ismissing, state.Y)
+    theme_kw = publication_theme_kwargs(nrows=3)
 
     ys_true = [dot(s, Ytrue[i]) for i in 1:N]
 
     p1 = plot(1:N, ys_true, lw=1, alpha=0.3, color=:black, label="true",
-        xlabel="chain index", ylabel="sᵀy", title="Step $step: UCB Acquisition")
+        xlabel="chain index", ylabel="sᵀy")
     plot!(p1, 1:N, acq.μs, ribbon=2 .* acq.σs, fillalpha=0.2, lw=2, label="μ ± 2σ")
-    scatter!(p1, observed, [dot(s, Ytrue[i]) for i in observed], ms=5, color=:red, label="obs", alpha=0.7)
+    scatter!(p1, observed, [dot(s, Ytrue[i]) for i in observed], ms=3, color=:red, label="obs", alpha=0.7)
     vline!(p1, [k], linestyle=:dash, lw=2, color=:green, label="next")
 
-    p2 = plot(1:N, acq.ucb, lw=2, xlabel="chain index", ylabel="UCB", title="Acquisition Function", legend=false)
-    scatter!(p2, observed, acq.ucb[observed], ms=3, alpha=0.5)
+    p2 = plot(1:N, acq.ucb, lw=2, xlabel="chain index", ylabel="UCB", legend=false)
+    scatter!(p2, observed, acq.ucb[observed], ms=2, alpha=0.5)
     vline!(p2, [k], linestyle=:dash, lw=2, color=:red)
 
     colors = [:blue, :red, :green]
-    p3 = plot(title="First 3 Outputs", xlabel="chain index", ylabel="value", legend=:topright)
+    linestyles = [:solid, :dash, :dot]
+    p3 = plot(xlabel="chain index", ylabel="value", legend=:topright)
     for j in 1:3
         y_true_j = [Ytrue[i][j] for i in 1:N]
         μj = [acq.μ_pred[i][j] for i in 1:N]
         σj = [acq.σ_pred[i][j] for i in 1:N]
         plot!(p3, 1:N, y_true_j, lw=1, alpha=0.3, linestyle=:dot, label="true y$j", color=colors[j])
-        plot!(p3, 1:N, μj, ribbon=2 .* σj, fillalpha=0.15, lw=2, label="pred y$j", color=colors[j])
+        plot!(p3, 1:N, μj, ribbon=2 .* σj, fillalpha=0.15, lw=2, linestyle=linestyles[j], label="pred y$j", color=colors[j])
     end
     vline!(p3, [k], linestyle=:dash, lw=2, label="next", color=:black, alpha=0.5)
 
-    plot(p1, p2, p3, layout=@layout([a; b; c]), size=(900, 1000))
+    plot(p1, p2, p3, layout=@layout([a; b; c]); theme_kw...)
 end

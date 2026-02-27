@@ -26,14 +26,38 @@ function ucb_acquisition(res, state::AbstractBOState, cfg::ExperimentConfig, N::
 end
 
 """
-    select_next_point(ucb, Y) -> Int
+    select_next_point(score, Y) -> Int
 
-Select the next point to evaluate: the unobserved point with highest UCB.
+Select the next point to evaluate: the unobserved point with highest score.
+Works with any score vector (UCB, variance, etc.).
 Returns `0` if all points are observed.
 """
-function select_next_point(ucb::AbstractVector, Y::AbstractVector)
+function select_next_point(score::AbstractVector, Y::AbstractVector)
     observed = findall(!ismissing, Y)
     unobs = setdiff(1:length(Y), observed)
     isempty(unobs) && return 0
-    unobs[argmax(ucb[unobs])]
+    unobs[argmax(score[unobs])]
 end
+
+"""
+    variance_acquisition(res, state, cfg, N) -> (; score, μ_pred, σ_pred)
+
+Compute total predictive variance acquisition from RxInfer inference results.
+
+Returns:
+- `score`: total variance across outputs for each point (higher = more uncertain)
+- `μ_pred`: predicted means (original scale), length-N vector of vectors
+- `σ_pred`: predicted stds (original scale), length-N vector of vectors
+"""
+function variance_acquisition(res, state::AbstractBOState, cfg::ExperimentConfig, N::Int)
+    pred_output = res.posteriors[:my]
+    μ_pred_std = mean.(pred_output)
+    σ_pred_std = [sqrt.(var(pred_output[i])) for i in 1:N]
+
+    μ_pred = [μ_pred_std[i] .* state.σy .+ state.μy for i in 1:N]
+    σ_pred = [σ_pred_std[i] .* state.σy for i in 1:N]
+
+    score = [sum(σ_pred[i] .^ 2) for i in 1:N]
+    (; score, μ_pred, σ_pred)
+end
+
