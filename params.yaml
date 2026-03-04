@@ -29,7 +29,7 @@ quadrature:
   d: 1
   D: 6
   Q: 3
-  steps: 100
+  steps: 150
   n_seed: 10
   R_diag_init: 0.1
   log_every: 5

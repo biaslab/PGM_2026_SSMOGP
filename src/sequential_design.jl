@@ -77,14 +77,19 @@ function _compute_mnll(μ_pred::Vector{Vector{Float64}}, σ_pred::Vector{Vector{
     nll = 0.0
     n_test = 0
     for i in eachindex(Y)
-        ismissing(Y[i]) || continue
+        if !(ismissing(Y[i])) 
+            # @info "We do some processing"
+        else
+            # @debug "SD-PO: Test sample is missing" Y[i]
+            continue
+        end
         n_test += 1
         for d in 1:D
-            σ2 = max(σ_pred[i][d]^2, 1e-12)
+            σ2 = max(σ_pred[i][d]^2, 1e-8)
             nll += 0.5 * log(2π * σ2) + (Ytrue[i][d] - μ_pred[i][d])^2 / (2σ2)
         end
     end
-    n_test == 0 ? NaN : nll / (n_test * D)
+    n_test == 0 ? error("No test samples") : nll / (n_test * D)
 end
 
 """
@@ -152,6 +157,7 @@ function run_sd_po!(cfg::ExperimentConfig, eval_fn; po_state::POState, Xo, Δ, Y
 
                 ie = _compute_integral_error(acq.μ_pred, Ytrue, N, D)
                 rmse = _compute_rmse(acq.μ_pred, Ytrue, N, D)
+
                 mnll = _compute_mnll(acq.μ_pred, acq.σ_pred, Ytrue, po_state.Y, D)
 
                 n_obs = length(findall(!ismissing, po_state.Y))
@@ -413,7 +419,8 @@ function _plot_sd_timing(results, output_dir)
             times = hcat([_pad(r[m]["step_times"], max_steps) for r in results]...)
             cum_times = cumsum(times, dims=1)
             t_cum = [_nanmedian(cum_times[i, :]) for i in 1:max_steps]
-            plot!(p, t_cum, steps, lw=2, label=lab, color=col, linestyle=ls)
+            plot!(p, t_cum, steps, lw=2, label=lab, fillalpha=0.15, color=col, linestyle=ls)
+            plot!(title="Quadrature: Step rate (5 seeds)")
         end
         p
     end
