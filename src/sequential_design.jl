@@ -406,6 +406,17 @@ function _plot_sd_timing(results, output_dir)
         end
         p
     end
+    save_plot(joinpath(output_dir, "timelimit")) do
+        p = plot(; xlabel="Time (s)", ylabel="Steps", #yscale=:log10,
+                legend=:bottomright, theme_kw...)
+        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
+            times = hcat([_pad(r[m]["step_times"], max_steps) for r in results]...)
+            cum_times = cumsum(times, dims=1)
+            t_cum = [_nanmedian(cum_times[i, :]) for i in 1:max_steps]
+            plot!(p, t_cum, steps, lw=2, label=lab, color=col, linestyle=ls)
+        end
+        p
+    end
 end
 
 """

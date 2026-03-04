@@ -12,9 +12,9 @@
 # Run via: julia --project=. experiments/quadrature.jl
 # Or via:  dvc repro quadrature
 
-using Pkg; Pkg.activate(joinpath(@__DIR__, ".."))
+using Pkg; Pkg.activate(joinpath(@__DIR__, "..")); Pkg.instantiate()
 
-using YAML, JSON, Statistics
+using Revise, YAML, JSON, Statistics
 
 include(joinpath(@__DIR__, "..", "src", "RxBayesOpt.jl"))
 using .RxBayesOpt
@@ -65,4 +65,5 @@ metrics = Dict(
 open(joinpath(output_dir, "metrics.json"), "w") do io
     JSON.print(io, metrics, 2)
 end
+
 @info "Bayesian quadrature experiment complete" metrics
