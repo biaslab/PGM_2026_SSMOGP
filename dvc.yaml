@@ -12,6 +12,8 @@ stages:
       - data/partial_obs/convergence.tikz
       - data/partial_obs/timing.png
       - data/partial_obs/timing.tikz
+      - data/partial_obs/timelimit.png
+      - data/partial_obs/timelimit.tikz
     metrics:
       - data/partial_obs/metrics.json:
           cache: false
@@ -27,6 +29,8 @@ stages:
       - data/quadrature/comparison.json
       - data/quadrature/timing.png
       - data/quadrature/timing.tikz
+      - data/quadrature/timelimit.png
+      - data/quadrature/timelimit.tikz
     metrics:
       - data/quadrature/metrics.json:
           cache: false
