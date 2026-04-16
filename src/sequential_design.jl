@@ -48,7 +48,7 @@ end
 """
     _compute_rmse(μ_pred, Ytrue, N, D) -> Float64
 
-Compute root mean squared error for active learning.
+Compute root mean squared error for active learning (over all points).
 
     RMSE = sqrt(1/(N*D) Σᵢ Σ_d (μ_pred[i][d] - Ytrue[i][d])²)
 """
@@ -60,6 +60,53 @@ function _compute_rmse(μ_pred::Vector{Vector{Float64}}, Ytrue::Vector{Vector{Fl
         end
     end
     sqrt(mse / (N * D))
+end
+
+"""
+    _compute_rmse_test(μ_pred, Ytrue, Y, D) -> Float64
+
+Compute RMSE on held-out (unobserved) points only.
+
+    RMSE_test = sqrt(1/(N_test*D) Σᵢ Σ_d (μ_pred[i][d] - Ytrue[i][d])²)
+
+where the sum is over points i where `ismissing(Y[i])`.
+"""
+function _compute_rmse_test(μ_pred::Vector{Vector{Float64}}, Ytrue::Vector{Vector{Float64}},
+                            Y::Vector{Union{Missing, Vector{Float64}}}, D::Int)
+    mse = 0.0
+    n_test = 0
+    for i in eachindex(Y)
+        ismissing(Y[i]) || continue
+        n_test += 1
+        for d in 1:D
+            mse += (μ_pred[i][d] - Ytrue[i][d])^2
+        end
+    end
+    n_test == 0 ? NaN : sqrt(mse / (n_test * D))
+end
+
+"""
+    _compute_mnll_test(μ_pred, σ_pred, Ytrue, Y, D) -> Float64
+
+Compute mean negative log-likelihood on held-out (unobserved) points.
+
+    MNLL = 1/(N_test*D) Σᵢ Σ_d [ ½ log(2π σ²ᵢd) + (yᵢd - μᵢd)² / (2 σ²ᵢd) ]
+
+where the sum is over points i where `ismissing(Y[i])`.
+"""
+function _compute_mnll_test(μ_pred::Vector{Vector{Float64}}, σ_pred::Vector{Vector{Float64}},
+                            Ytrue::Vector{Vector{Float64}}, Y::Vector{Union{Missing, Vector{Float64}}}, D::Int)
+    nll = 0.0
+    n_test = 0
+    for i in eachindex(Y)
+        ismissing(Y[i]) || continue
+        n_test += 1
+        for d in 1:D
+            σ2 = max(σ_pred[i][d]^2, 1e-8)
+            nll += 0.5 * log(2π * σ2) + (Ytrue[i][d] - μ_pred[i][d])^2 / (2σ2)
+        end
+    end
+    n_test == 0 ? NaN : nll / (n_test * D)
 end
 
 """
@@ -348,12 +395,15 @@ function run_sd_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
 
         _final(v) = isempty(v) ? nothing : v[end]
         _summary(r) = Dict(
-            "ie_final"     => _final(r.integral_error_history),
-            "rmse_final"   => _final(r.rmse_history),
-            "mnll_final"   => _final(r.mnll_history),
-            "n_iterations" => r.n_iterations,
-            "step_times"   => r.step_times,
-            "total_time"   => sum(r.step_times),
+            "ie_final"                 => _final(r.integral_error_history),
+            "rmse_final"               => _final(r.rmse_history),
+            "mnll_final"               => _final(r.mnll_history),
+            "integral_error_history"   => r.integral_error_history,
+            "rmse_history"             => r.rmse_history,
+            "mnll_history"             => r.mnll_history,
+            "n_iterations"             => r.n_iterations,
+            "step_times"               => r.step_times,
+            "total_time"               => sum(r.step_times),
         )
 
         seed_result = Dict{String, Any}(
@@ -368,10 +418,10 @@ function run_sd_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
         push!(all_results, seed_result)
     end
 
-    # Save JSON
+    # Save JSON — allow NaN so transient RxInfer numerical blowups don't kill the write.
     json_path = joinpath(output_dir, "comparison.json")
     open(json_path, "w") do io
-        JSON.print(io, all_results, 2)
+        JSON.json(io, all_results; pretty=2, allownan=true)
     end
     @info "Saved SD comparison to $json_path"
 
@@ -427,14 +477,78 @@ function _plot_sd_timing(results, output_dir)
 end
 
 """
+    _plot_sd_quality(results, output_dir)
+
+Generate quality metrics plots (integral error + RMSE) for a sequential design experiment.
+Uses median across seeds for robustness to transient numerical instabilities.
+"""
+function _plot_sd_quality(results, output_dir)
+    has_partial = haskey(first(results), "ss_po")
+    methods = has_partial ? ["ss_full", "ss_po", "km_full", "km_po"] : ["ss_full", "km_full"]
+    labels = has_partial ? ["SS-GP (full)", "SS-GP (partial)", "KM-GP (full)", "KM-GP (partial)"] : ["SS-GP", "KM-GP"]
+    colors = has_partial ? [:blue, :cyan, :red, :orange] : [:blue, :red]
+    linestyles = has_partial ? [:solid, :dash, :solid, :dash] : [:solid, :solid]
+
+    max_steps = maximum(r -> maximum(length(r[m]["integral_error_history"]) for m in methods), results)
+
+    function _pad(v, n)
+        length(v) >= n && return v[1:n]
+        vcat(v, fill(NaN, n - length(v)))
+    end
+
+    # Pre-filter finite-but-extreme numerical artifacts from RxInfer's Kalman smoother.
+    # Normal integral error / RMSE is well below `thr`; anything above is an artifact.
+    _clean(x, thr) = filter(v -> !isnan(v) && isfinite(v) && abs(v) <= thr, x)
+    _medf(x, thr)  = (v = _clean(x, thr); isempty(v) ? NaN : median(v))
+    _q25f(x, thr)  = (v = _clean(x, thr); length(v) >= 2 ? quantile(v, 0.25) : (isempty(v) ? NaN : v[1]))
+    _q75f(x, thr)  = (v = _clean(x, thr); length(v) >= 2 ? quantile(v, 0.75) : (isempty(v) ? NaN : v[1]))
+
+    steps = 1:max_steps
+    theme_kw = publication_theme_kwargs()
+
+    # Plot 1: Integral error convergence (median + IQR)
+    save_plot(joinpath(output_dir, "integral_error")) do
+        thr = 10.0
+        p = plot(; xlabel="Step", ylabel="Integral Error",
+                 legend=:topright, theme_kw...)
+        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
+            histories = hcat([_pad(r[m]["integral_error_history"], max_steps) for r in results]...)
+            m_med = [_medf(histories[i, :], thr) for i in 1:max_steps]
+            m_lo  = m_med .- [_q25f(histories[i, :], thr) for i in 1:max_steps]
+            m_hi  = [_q75f(histories[i, :], thr) for i in 1:max_steps] .- m_med
+            plot!(p, steps, m_med, ribbon=(m_lo, m_hi), fillalpha=0.15, lw=2,
+                  label=lab, color=col, linestyle=ls)
+        end
+        p
+    end
+
+    # Plot 2: RMSE convergence (median + IQR)
+    save_plot(joinpath(output_dir, "rmse")) do
+        thr = 10.0
+        p = plot(; xlabel="Step", ylabel="RMSE",
+                 legend=:topright, theme_kw...)
+        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
+            histories = hcat([_pad(r[m]["rmse_history"], max_steps) for r in results]...)
+            m_med = [_medf(histories[i, :], thr) for i in 1:max_steps]
+            m_lo  = m_med .- [_q25f(histories[i, :], thr) for i in 1:max_steps]
+            m_hi  = [_q75f(histories[i, :], thr) for i in 1:max_steps] .- m_med
+            plot!(p, steps, m_med, ribbon=(m_lo, m_hi), fillalpha=0.15, lw=2,
+                  label=lab, color=col, linestyle=ls)
+        end
+        p
+    end
+end
+
+"""
     run_bq_comparison(cfg, eval_fn; seeds, output_dir) -> results
 
-Run Bayesian quadrature comparison: calls `run_sd_comparison` and generates timing plot.
+Run Bayesian quadrature comparison: calls `run_sd_comparison` and generates timing + quality plots.
 
 Runs SS-full vs KM-full only (no partial observations).
 """
 function run_bq_comparison(cfg::ExperimentConfig, eval_fn; seeds=0:4, output_dir="data/quadrature")
     results = run_sd_comparison(cfg, eval_fn; seeds=seeds, output_dir=output_dir, run_partial=false)
     _plot_sd_timing(results, output_dir)
+    _plot_sd_quality(results, output_dir)
     results
 end

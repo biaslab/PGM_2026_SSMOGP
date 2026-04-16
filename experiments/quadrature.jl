@@ -50,20 +50,22 @@ seeds = p["seeds"]
 
 results = run_bq_comparison(cfg, eval_fn; seeds=seeds, output_dir=output_dir)
 
-# Save DVC metrics
+# Save DVC metrics (median for quality metrics — robust to transient RxInfer instabilities)
 metrics = Dict(
     "n_seeds"              => length(seeds),
     "n_steps"              => p["steps"],
-    "ss_full_ie_final"     => mean([r["ss_full"]["ie_final"] for r in results]),
-    "km_full_ie_final"     => mean([r["km_full"]["ie_final"] for r in results]),
-    "ss_full_mnll_final"   => mean([r["ss_full"]["mnll_final"] for r in results]),
-    "km_full_mnll_final"   => mean([r["km_full"]["mnll_final"] for r in results]),
+    "ss_full_ie_final"     => median([r["ss_full"]["ie_final"] for r in results]),
+    "km_full_ie_final"     => median([r["km_full"]["ie_final"] for r in results]),
+    "ss_full_rmse_final"   => median([r["ss_full"]["rmse_final"] for r in results]),
+    "km_full_rmse_final"   => median([r["km_full"]["rmse_final"] for r in results]),
+    "ss_full_mnll_final"   => median([r["ss_full"]["mnll_final"] for r in results]),
+    "km_full_mnll_final"   => median([r["km_full"]["mnll_final"] for r in results]),
     "ss_full_time_mean"    => mean([r["ss_full"]["total_time"] for r in results]),
     "km_full_time_mean"    => mean([r["km_full"]["total_time"] for r in results]),
 )
 
 open(joinpath(output_dir, "metrics.json"), "w") do io
-    JSON.print(io, metrics, 2)
+    JSON.json(io, metrics; pretty=2, allownan=true)
 end
 
 @info "Bayesian quadrature experiment complete" metrics

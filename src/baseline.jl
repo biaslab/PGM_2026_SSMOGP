@@ -279,6 +279,8 @@ function run_bo_baseline!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineStat
     best_value_history = Float64[]
     n_observed_history = Int[]
     R_diag_history = Vector{Float64}[]
+    rmse_history = Float64[]
+    mnll_history = Float64[]
     step_times = Float64[]
 
     n_completed = 0
@@ -316,6 +318,12 @@ function run_bo_baseline!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineStat
                 push!(n_observed_history, n_obs)
                 push!(R_diag_history, diag(bl_state.R))
 
+                # Held-out regression metrics
+                rmse = _compute_rmse_test(acq.μ_pred, Ytrue, bl_state.Y, cfg.D)
+                mnll = _compute_mnll_test(acq.μ_pred, acq.σ_pred, Ytrue, bl_state.Y, cfg.D)
+                push!(rmse_history, rmse)
+                push!(mnll_history, mnll)
+
                 if step % cfg.log_every == 0
                     @info "Baseline Step $step/$(cfg.steps)" n_observed=n_obs best_value=round(best.value; digits=4)
                 end
@@ -332,6 +340,7 @@ function run_bo_baseline!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineStat
 
     result = BOResult(best.index, best.value, best.y, observed, n_completed, R_learned,
                       best_value_history, n_observed_history, R_diag_history,
+                      rmse_history, mnll_history,
                       step_times, "kernel-matrix")
     (; result, frames)
 end

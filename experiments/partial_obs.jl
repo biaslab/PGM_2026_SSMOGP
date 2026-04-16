@@ -51,21 +51,37 @@ seeds = p["seeds"]
 
 results = run_po_comparison(cfg, eval_fn; seeds=seeds, output_dir=output_dir)
 
-# Save DVC metrics
+# Helpers: last finite entry; nan-safe median/mean. Transient RxInfer numerical
+# blowups leave NaNs in per-seed histories — we skip them rather than poisoning the summary.
+_last_finite(v) = (f = filter(isfinite, v); isempty(f) ? NaN : f[end])
+_nanmedian(x)   = (v = filter(isfinite, x); isempty(v) ? NaN : median(v))
+_nanmean(x)     = (v = filter(isfinite, x); isempty(v) ? NaN : mean(v))
+
+# Save DVC metrics — median for quality metrics (robust to transient RxInfer instabilities),
+# mean for best_value and timing.
 metrics = Dict(
     "n_seeds"                => length(seeds),
     "n_steps"                => p["steps"],
-    "ss_full_best_mean"      => mean([r["ss_full"]["best_value"] for r in results]),
-    "ss_po_best_mean"        => mean([r["ss_po"]["best_value"] for r in results]),
-    "km_full_best_mean"      => mean([r["km_full"]["best_value"] for r in results]),
-    "km_po_best_mean"        => mean([r["km_po"]["best_value"] for r in results]),
+    "ss_full_best_mean"      => _nanmean([r["ss_full"]["best_value"] for r in results]),
+    "ss_po_best_mean"        => _nanmean([r["ss_po"]["best_value"] for r in results]),
+    "km_full_best_mean"      => _nanmean([r["km_full"]["best_value"] for r in results]),
+    "km_po_best_mean"        => _nanmean([r["km_po"]["best_value"] for r in results]),
+    "random_best_mean"       => _nanmean([r["random"]["best_value"] for r in results]),
     "ss_full_time_mean"      => mean([r["ss_full"]["total_time"] for r in results]),
     "ss_po_time_mean"        => mean([r["ss_po"]["total_time"] for r in results]),
     "km_full_time_mean"      => mean([r["km_full"]["total_time"] for r in results]),
     "km_po_time_mean"        => mean([r["km_po"]["total_time"] for r in results]),
+    "ss_full_rmse_final"     => _nanmedian([_last_finite(r["ss_full"]["rmse_history"]) for r in results]),
+    "ss_po_rmse_final"       => _nanmedian([_last_finite(r["ss_po"]["rmse_history"]) for r in results]),
+    "km_full_rmse_final"     => _nanmedian([_last_finite(r["km_full"]["rmse_history"]) for r in results]),
+    "km_po_rmse_final"       => _nanmedian([_last_finite(r["km_po"]["rmse_history"]) for r in results]),
+    "ss_full_mnll_final"     => _nanmedian([_last_finite(r["ss_full"]["mnll_history"]) for r in results]),
+    "ss_po_mnll_final"       => _nanmedian([_last_finite(r["ss_po"]["mnll_history"]) for r in results]),
+    "km_full_mnll_final"     => _nanmedian([_last_finite(r["km_full"]["mnll_history"]) for r in results]),
+    "km_po_mnll_final"       => _nanmedian([_last_finite(r["km_po"]["mnll_history"]) for r in results]),
 )
 
 open(joinpath(output_dir, "metrics.json"), "w") do io
-    JSON.print(io, metrics, 2)
+    JSON.json(io, metrics; pretty=2, allownan=true)
 end
 @info "Partial observation experiment complete" metrics

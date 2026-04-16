@@ -115,7 +115,7 @@ function save_results(result::BOResult, cfg::ExperimentConfig, frames; output_di
     )
     json_path = joinpath(output_dir, "metrics.json")
     open(json_path, "w") do io
-        JSON.print(io, metrics, 2)
+        JSON.json(io, metrics; pretty=2, allownan=true)
     end
     @info "Saved metrics to $json_path"
 

@@ -31,10 +31,11 @@ export setup_experiment, save_results
 export setup_baseline, run_bo_baseline!
 export setup_po, run_bo_po!
 export setup_baseline_po, run_bo_baseline_po!
-export run_po_comparison
+export run_po_comparison, run_bo_random!
 export hartmann6, make_mo_hartmann, make_environmental, make_synthetic_1d
 export SDResult
 export variance_acquisition, baseline_po_variance_acquisition
+export _compute_rmse_test, _compute_mnll_test
 export run_sd_po!, run_sd_baseline_po!, run_sd_comparison
 export run_bq_comparison
 

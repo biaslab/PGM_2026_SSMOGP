@@ -91,6 +91,8 @@ Summary of a completed Bayesian optimization run.
 - `best_value_history::Vector{Float64}`: best scalarized value after each step
 - `n_observed_history::Vector{Int}`: number of observed points after each step
 - `R_diag_history::Vector{Vector{Float64}}`: diagonal of R posterior mean after each step
+- `rmse_history::Vector{Float64}`: RMSE on held-out points after each step
+- `mnll_history::Vector{Float64}`: mean negative log-likelihood on held-out points after each step
 - `step_times::Vector{Float64}`: wall-clock time (seconds) for each BO step
 - `method::String`: identifier for the surrogate model method
 """
@@ -104,6 +106,8 @@ struct BOResult
     best_value_history::Vector{Float64}
     n_observed_history::Vector{Int}
     R_diag_history::Vector{Vector{Float64}}
+    rmse_history::Vector{Float64}
+    mnll_history::Vector{Float64}
     step_times::Vector{Float64}
     method::String
 end
@@ -175,4 +179,10 @@ function print_summary(result::BOResult)
     @info "Best output vector" result.best_y
     @info "Learned R (posterior mean diagonal)" round.(diag(result.R_learned); digits=4)
     @info "History" steps_tracked=length(result.best_value_history) final_best=round(result.best_value_history[end]; digits=4)
+    if !isempty(result.rmse_history)
+        @info "Final RMSE" rmse=round(result.rmse_history[end]; digits=6)
+    end
+    if !isempty(result.mnll_history)
+        @info "Final MNLL" mnll=round(result.mnll_history[end]; digits=6)
+    end
 end

@@ -104,6 +104,8 @@ function run_bo_po!(cfg::ExperimentConfig, eval_fn; po_state::POState, Xo, Δ, Y
     best_value_history = Float64[]
     n_observed_history = Int[]
     R_diag_history = Vector{Float64}[]
+    rmse_history = Float64[]
+    mnll_history = Float64[]
     step_times = Float64[]
 
     n_completed = 0
@@ -158,6 +160,12 @@ function run_bo_po!(cfg::ExperimentConfig, eval_fn; po_state::POState, Xo, Δ, Y
                 push!(n_observed_history, n_obs)
                 push!(R_diag_history, R_diag)
 
+                # Held-out regression metrics
+                rmse = _compute_rmse_test(acq.μ_pred, Ytrue, po_state.Y, D)
+                mnll = _compute_mnll_test(acq.μ_pred, acq.σ_pred, Ytrue, po_state.Y, D)
+                push!(rmse_history, rmse)
+                push!(mnll_history, mnll)
+
                 if step % cfg.log_every == 0
                     @info "PO Step $step/$(cfg.steps)" n_observed=n_obs best_value=round(best.value; digits=4)
                 end
@@ -174,6 +182,7 @@ function run_bo_po!(cfg::ExperimentConfig, eval_fn; po_state::POState, Xo, Δ, Y
 
     result = BOResult(best.index, best.value, best.y, observed, n_completed, R_learned,
         best_value_history, n_observed_history, R_diag_history,
+        rmse_history, mnll_history,
         step_times, "state-space-po")
     (; result, frames)
 end
@@ -341,6 +350,8 @@ function run_bo_baseline_po!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineP
     best_value_history = Float64[]
     n_observed_history = Int[]
     R_diag_history = Vector{Float64}[]
+    rmse_history = Float64[]
+    mnll_history = Float64[]
     step_times = Float64[]
 
     n_completed = 0
@@ -377,6 +388,12 @@ function run_bo_baseline_po!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineP
                 push!(n_observed_history, n_obs)
                 push!(R_diag_history, copy(bl_state.R_diag))
 
+                # Held-out regression metrics
+                rmse = _compute_rmse_test(acq.μ_pred, Ytrue, bl_state.Y, D)
+                mnll = _compute_mnll_test(acq.μ_pred, acq.σ_pred, Ytrue, bl_state.Y, D)
+                push!(rmse_history, rmse)
+                push!(mnll_history, mnll)
+
                 if step % cfg.log_every == 0
                     @info "Baseline-PO Step $step/$(cfg.steps)" n_observed=n_obs best_value=round(best.value; digits=4)
                 end
@@ -393,8 +410,51 @@ function run_bo_baseline_po!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineP
 
     result = BOResult(best.index, best.value, best.y, observed, n_completed, R_learned,
                       best_value_history, n_observed_history, R_diag_history,
+                      rmse_history, mnll_history,
                       step_times, "kernel-matrix-po")
     (; result, frames)
+end
+
+# ─── Random baseline ───────────────────────────────────────────────────────
+
+"""
+    run_bo_random!(cfg, eval_fn; Y, Xo, μy, σy, s, rng) -> (; best_value_history, step_times)
+
+Run BO loop with random (no surrogate) point selection.
+At each step, randomly selects an unobserved candidate and evaluates it.
+Tracks only best scalarized value history and step times.
+"""
+function run_bo_random!(cfg::ExperimentConfig, eval_fn; Y, Xo, μy, σy, rng)
+    best_value_history = Float64[]
+    step_times = Float64[]
+    best_val = -Inf
+
+    # Check if any seed observations already exist
+    for i in eachindex(Y)
+        if !ismissing(Y[i])
+            y_orig = Y[i] .* σy .+ μy
+            val = dot(cfg.s, y_orig)
+            best_val = max(best_val, val)
+        end
+    end
+
+    for step in 1:cfg.steps
+        t_step = @elapsed begin
+            unobs = findall(ismissing, Y)
+            if isempty(unobs)
+                break
+            end
+            k = rand(rng, unobs)
+            y_new = eval_fn(row(Xo, k))
+            Y[k] = (y_new .- μy) ./ σy
+            val = dot(cfg.s, y_new)
+            best_val = max(best_val, val)
+        end
+        push!(best_value_history, best_val)
+        push!(step_times, t_step)
+    end
+
+    (; best_value_history, step_times)
 end
 
 # ─── Comparison runner ──────────────────────────────────────────────────────
@@ -470,43 +530,44 @@ function run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
         out_km_po = run_bo_baseline_po!(cfg_partial, eval_fn;
             bl_state=bl_partial, Ytrue=setup_data4.Ytrue)
 
+        # ── Random baseline ──
+        @info "Running Random baseline (seed=$seed)"
+        setup_data5 = setup_experiment(cfg_full, eval_fn)
+        Y_rand = copy(setup_data5.Y)
+        out_random = run_bo_random!(cfg_full, eval_fn;
+            Y=Y_rand, Xo=setup_data5.Xo,
+            μy=setup_data5.μy, σy=setup_data5.σy,
+            rng=MersenneTwister(seed + 2000))
+
+        _bo_summary(r) = Dict(
+            "best_value_history" => r.best_value_history,
+            "step_times"         => r.step_times,
+            "best_value"         => r.best_value,
+            "n_iterations"       => r.n_iterations,
+            "total_time"         => sum(r.step_times),
+            "rmse_history"       => r.rmse_history,
+            "mnll_history"       => r.mnll_history,
+        )
+
         push!(all_results, Dict(
             "seed" => seed,
-            "ss_full" => Dict(
-                "best_value_history" => out_ss_full.result.best_value_history,
-                "step_times"         => out_ss_full.result.step_times,
-                "best_value"         => out_ss_full.result.best_value,
-                "n_iterations"       => out_ss_full.result.n_iterations,
-                "total_time"         => sum(out_ss_full.result.step_times),
-            ),
-            "ss_po" => Dict(
-                "best_value_history" => out_ss_po.result.best_value_history,
-                "step_times"         => out_ss_po.result.step_times,
-                "best_value"         => out_ss_po.result.best_value,
-                "n_iterations"       => out_ss_po.result.n_iterations,
-                "total_time"         => sum(out_ss_po.result.step_times),
-            ),
-            "km_full" => Dict(
-                "best_value_history" => out_km_full.result.best_value_history,
-                "step_times"         => out_km_full.result.step_times,
-                "best_value"         => out_km_full.result.best_value,
-                "n_iterations"       => out_km_full.result.n_iterations,
-                "total_time"         => sum(out_km_full.result.step_times),
-            ),
-            "km_po" => Dict(
-                "best_value_history" => out_km_po.result.best_value_history,
-                "step_times"         => out_km_po.result.step_times,
-                "best_value"         => out_km_po.result.best_value,
-                "n_iterations"       => out_km_po.result.n_iterations,
-                "total_time"         => sum(out_km_po.result.step_times),
+            "ss_full" => _bo_summary(out_ss_full.result),
+            "ss_po"   => _bo_summary(out_ss_po.result),
+            "km_full" => _bo_summary(out_km_full.result),
+            "km_po"   => _bo_summary(out_km_po.result),
+            "random"  => Dict(
+                "best_value_history" => out_random.best_value_history,
+                "step_times"         => out_random.step_times,
+                "best_value"         => isempty(out_random.best_value_history) ? NaN : out_random.best_value_history[end],
+                "total_time"         => sum(out_random.step_times),
             ),
         ))
     end
 
-    # Save JSON
+    # Save JSON — allow NaN so transient RxInfer numerical blowups don't kill the write.
     json_path = joinpath(output_dir, "comparison.json")
     open(json_path, "w") do io
-        JSON.print(io, all_results, 2)
+        JSON.json(io, all_results; pretty=2, allownan=true)
     end
     @info "Saved partial-obs comparison to $json_path"
 
@@ -518,7 +579,7 @@ end
 """
     _plot_po_comparison(results, output_dir)
 
-Generate convergence and timing comparison plots for the 4-way partial-obs experiment.
+Generate convergence, timing, and regression metric plots for the partial-obs experiment.
 """
 function _plot_po_comparison(results, output_dir)
     methods = ["ss_full", "ss_po", "km_full", "km_po"]
@@ -541,7 +602,7 @@ function _plot_po_comparison(results, output_dir)
     linestyles = [:solid, :dash, :solid, :dash]
     theme_kw = publication_theme_kwargs()
 
-    # Plot 1: Convergence
+    # Plot 1: Convergence (with random baseline)
     save_plot(joinpath(output_dir, "convergence")) do
         p = plot(; xlabel="BO Step", ylabel="Best Scalarized Value",
                  legend=:bottomright, theme_kw...)
@@ -551,6 +612,14 @@ function _plot_po_comparison(results, output_dir)
             m_std  = [_nanstd(histories[i, :])  for i in 1:max_steps]
             plot!(p, steps, m_mean, ribbon=m_std, fillalpha=0.15, lw=2,
                   label=lab, color=col, linestyle=ls)
+        end
+        # Random baseline
+        if haskey(first(results), "random")
+            rand_histories = hcat([_pad(r["random"]["best_value_history"], max_steps) for r in results]...)
+            r_mean = [_nanmean(rand_histories[i, :]) for i in 1:max_steps]
+            r_std  = [_nanstd(rand_histories[i, :])  for i in 1:max_steps]
+            plot!(p, steps, r_mean, ribbon=r_std, fillalpha=0.1, lw=2,
+                  label="Random", color=:gray, linestyle=:dot)
         end
         p
     end
@@ -565,5 +634,48 @@ function _plot_po_comparison(results, output_dir)
             plot!(p, steps, t_med, lw=2, label=lab, color=col, linestyle=ls)
         end
         p
+    end
+
+    # Plot 3: RMSE on held-out points (median + IQR, robust to transient instabilities)
+    # Pre-filter finite-but-extreme numerical artifacts from RxInfer's Kalman smoother.
+    # Normal RMSE is ~0.3 and normal |MNLL| is ~0.5; anything above `thr` is an artifact.
+    _clean(x, thr) = filter(v -> !isnan(v) && isfinite(v) && abs(v) <= thr, x)
+    _medf(x, thr)  = (v = _clean(x, thr); isempty(v) ? NaN : median(v))
+    _q25f(x, thr)  = (v = _clean(x, thr); length(v) >= 2 ? quantile(v, 0.25) : (isempty(v) ? NaN : v[1]))
+    _q75f(x, thr)  = (v = _clean(x, thr); length(v) >= 2 ? quantile(v, 0.75) : (isempty(v) ? NaN : v[1]))
+
+    if haskey(first(results)["ss_full"], "rmse_history")
+        save_plot(joinpath(output_dir, "rmse")) do
+            thr = 10.0
+            p = plot(; xlabel="BO Step", ylabel="RMSE (held-out)",
+                     legend=:topright, theme_kw...)
+            for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
+                histories = hcat([_pad(r[m]["rmse_history"], max_steps) for r in results]...)
+                m_med = [_medf(histories[i, :], thr) for i in 1:max_steps]
+                m_lo  = m_med .- [_q25f(histories[i, :], thr) for i in 1:max_steps]
+                m_hi  = [_q75f(histories[i, :], thr) for i in 1:max_steps] .- m_med
+                plot!(p, steps, m_med, ribbon=(m_lo, m_hi), fillalpha=0.15, lw=2,
+                      label=lab, color=col, linestyle=ls)
+            end
+            p
+        end
+    end
+
+    # Plot 4: MNLL on held-out points (median + IQR)
+    if haskey(first(results)["ss_full"], "mnll_history")
+        save_plot(joinpath(output_dir, "mnll")) do
+            thr = 10.0
+            p = plot(; xlabel="BO Step", ylabel="MNLL (held-out)",
+                     legend=:topright, theme_kw...)
+            for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
+                histories = hcat([_pad(r[m]["mnll_history"], max_steps) for r in results]...)
+                m_med = [_medf(histories[i, :], thr) for i in 1:max_steps]
+                m_lo  = m_med .- [_q25f(histories[i, :], thr) for i in 1:max_steps]
+                m_hi  = [_q75f(histories[i, :], thr) for i in 1:max_steps] .- m_med
+                plot!(p, steps, m_med, ribbon=(m_lo, m_hi), fillalpha=0.15, lw=2,
+                      label=lab, color=col, linestyle=ls)
+            end
+            p
+        end
     end
 end

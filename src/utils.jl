@@ -20,20 +20,21 @@ Squared Euclidean distance between vectors `a` and `b`, computed with SIMD.
 end
 
 """
-    nn_chain_order(X) -> Vector{Int}
+    nn_chain_order(X; start_idx=1) -> Vector{Int}
 
 Greedy nearest-neighbor chain ordering of the rows of `X`.
 
-Starting from the first row, repeatedly visits the closest unvisited row
+Starting from row `start_idx`, repeatedly visits the closest unvisited row
 (by squared Euclidean distance). Returns a permutation vector of row indices.
 This heuristic enables state-space GP inference on high-dimensional inputs
 by arranging points into a 1D chain.
 """
-function nn_chain_order(X::AbstractMatrix{<:Real})
+function nn_chain_order(X::AbstractMatrix{<:Real}; start_idx::Int=1)
     N = size(X, 1)
     remaining = collect(1:N)
     order = Vector{Int}(undef, N)
-    order[1] = popfirst!(remaining)
+    idx_pos = findfirst(==(start_idx), remaining)
+    order[1] = splice!(remaining, idx_pos)
     for i in 2:N
         last = order[i-1]
         j = argmin([sqdist(row(X, k), row(X, last)) for k in remaining])
