@@ -27,6 +27,7 @@ Immutable configuration for a multi-output Bayesian optimization experiment.
 - `animate::Bool`: whether to produce an animation
 - `log_every::Int`: log progress every N steps
 - `seed::Int`: random seed
+- `start_idx::Int`: starting index for the NN chain ordering
 """
 @kwdef struct ExperimentConfig
     N::Int            = 100
@@ -46,6 +47,7 @@ Immutable configuration for a multi-output Bayesian optimization experiment.
     seed::Int         = 0
     obs_pattern::Symbol  = :full
     obs_frac::Float64    = 1.0
+    start_idx::Int    = 1
 end
 
 """

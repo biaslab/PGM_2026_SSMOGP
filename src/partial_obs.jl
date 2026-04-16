@@ -478,7 +478,8 @@ function run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
         n_seed=cfg_template.n_seed, steps=cfg_template.steps,
         tune_every=cfg_template.tune_every, R_diag_init=cfg_template.R_diag_init,
         animate=false, log_every=cfg_template.log_every, seed=0,
-        obs_pattern=:sensor_groups, obs_frac=cfg_template.obs_frac
+        obs_pattern=:sensor_groups, obs_frac=cfg_template.obs_frac,
+        start_idx=cfg_template.start_idx,
     )
 
     for seed in seeds
@@ -489,7 +490,8 @@ function run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
             n_seed=cfg_template.n_seed, steps=cfg_template.steps,
             tune_every=cfg_template.tune_every, R_diag_init=cfg_template.R_diag_init,
             animate=false, log_every=cfg_template.log_every, seed=seed,
-            obs_pattern=:full
+            obs_pattern=:full,
+            start_idx=cfg_template.start_idx,
         )
         cfg_partial = ExperimentConfig(;
             N=cfg_po.N, d=cfg_po.d, Q=cfg_po.Q, D=cfg_po.D,
@@ -497,7 +499,8 @@ function run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, o
             n_seed=cfg_po.n_seed, steps=cfg_po.steps,
             tune_every=cfg_po.tune_every, R_diag_init=cfg_po.R_diag_init,
             animate=false, log_every=cfg_po.log_every, seed=seed,
-            obs_pattern=:sensor_groups
+            obs_pattern=:sensor_groups,
+            start_idx=cfg_po.start_idx,
         )
 
         # ── SS-GP full observations ──

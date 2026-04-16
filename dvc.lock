@@ -198,8 +198,8 @@ stages:
       size: 4090
     - path: src
       hash: md5
-      md5: b87e92a9c396d35b0a6098e887200f3e.dir
-      size: 88878
+      md5: 52df0d80b540a538057ef873f1a3f7b1.dir
+      size: 89814
       nfiles: 13
     params:
       params.yaml:
@@ -210,7 +210,7 @@ stages:
           Q: 6
           n_spatial: 3
           n_temporal: 4
-          steps: 100
+          steps: 40
           n_seed: 10
           beta: 2.0
           R_diag_init: 0.2
@@ -218,6 +218,14 @@ stages:
           seeds:
           - 0
           - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
           ls:
           - 1.0
           - 1.5
@@ -235,55 +243,55 @@ stages:
     outs:
     - path: data/partial_obs/comparison.json
       hash: md5
-      md5: 58115628fa05b324480d1848230b48e4
-      size: 96311
+      md5: 41f20d77fdb9c4c75403832f6eb979c3
+      size: 200253
     - path: data/partial_obs/convergence.png
       hash: md5
-      md5: bea3f87342f0bb5fe38db64b4dd84b1f
-      size: 16214
+      md5: 9690952f46819ca0a9062bfb516230ff
+      size: 18431
     - path: data/partial_obs/convergence.tikz
       hash: md5
-      md5: fe18d7399cf1a92a8cae0f6aed546213
-      size: 99589
+      md5: 8e9d7028e0464a45dc1a080870b3a63c
+      size: 44601
     - path: data/partial_obs/metrics.json
       hash: md5
-      md5: bb8faa5c51108e2b05dbf8747c5a2b05
-      size: 746
+      md5: eca35ab9438376a5d2517cabc28aac17
+      size: 741
     - path: data/partial_obs/mnll.png
       hash: md5
-      md5: 1539b3ddd0c0547a53059234a251e771
-      size: 11809
+      md5: 90b7d8bbcfc6cbbd37c4459685b92882
+      size: 17209
     - path: data/partial_obs/mnll.tikz
       hash: md5
-      md5: 35c90f9eb56e77f561418b443bde17d1
-      size: 83482
+      md5: 56c7fa77836cc73217a5d302dd79b516
+      size: 37879
     - path: data/partial_obs/rmse.png
       hash: md5
-      md5: ce08ea693278476ea126863105087258
-      size: 10577
+      md5: 657c4930ca88372473e564b975e3bedb
+      size: 17651
     - path: data/partial_obs/rmse.tikz
       hash: md5
-      md5: 1424fd9cc14a59bfa143ad46cf557dde
-      size: 81971
+      md5: dd71731538c80bcd111ada061a9c2ed1
+      size: 37107
     - path: data/partial_obs/timing.png
       hash: md5
-      md5: 7b322fa6e7b393b7090d979c2ec3985d
-      size: 14623
+      md5: 094e74f46646270ccbd13314ebb0ef55
+      size: 12605
     - path: data/partial_obs/timing.tikz
       hash: md5
-      md5: b5cc4f1895ee1bb764acd08ee65de5a6
-      size: 19377
+      md5: 39572e5979a714ea5f2bf4ced12888a0
+      size: 10752
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:
     - path: experiments/quadrature.jl
       hash: md5
-      md5: 15c824a354892e9f17c79ba3ff3f2b54
-      size: 2486
+      md5: 048133bf3d91831e7036d01af627dc00
+      size: 2507
     - path: src
       hash: md5
-      md5: 7009d5493229048cfa1c3c0cdc596c62.dir
-      size: 88665
+      md5: 52df0d80b540a538057ef873f1a3f7b1.dir
+      size: 89814
       nfiles: 13
     params:
       params.yaml:
@@ -292,7 +300,7 @@ stages:
           d: 1
           D: 6
           Q: 3
-          steps: 150
+          steps: 40
           n_seed: 10
           R_diag_init: 0.1
           log_every: 5
@@ -302,6 +310,11 @@ stages:
           - 2
           - 3
           - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
           ls:
           - 1.0
           - 1.5
@@ -313,44 +326,44 @@ stages:
     outs:
     - path: data/quadrature/comparison.json
       hash: md5
-      md5: 24c0225cd2d423af9e84b686bc009766
-      size: 161650
+      md5: 03b59fe02ea07b7b0b18357ddc0d9050
+      size: 90739
     - path: data/quadrature/integral_error.png
       hash: md5
-      md5: a1e3fd30a3ef91d76f3ca9a552f6819f
-      size: 11818
+      md5: 34751d85adf806363ce9cf76ba71012b
+      size: 13975
     - path: data/quadrature/integral_error.tikz
       hash: md5
-      md5: c2a6b164fbbc5c6dc731c6b7de8043ea
-      size: 62373
+      md5: 6a4a9609855452fb7ce4302c330b0de7
+      size: 20507
     - path: data/quadrature/metrics.json
       hash: md5
-      md5: 72f983927abea4c3fcc6ffb3eb2e6c96
-      size: 383
+      md5: 5d4b2b8cb1535aa940d34efa1e6ea007
+      size: 374
     - path: data/quadrature/rmse.png
       hash: md5
-      md5: a02719b97f3ec2524f2ff39a25ae51be
-      size: 7369
+      md5: 49ea9e5f4639f13e45fe01bbdc7ed21b
+      size: 14089
     - path: data/quadrature/rmse.tikz
       hash: md5
-      md5: 5715823e5fcde9da453e5a5e157c2ee2
-      size: 61952
+      md5: 32e821107268865bd1129c29320401ac
+      size: 20443
     - path: data/quadrature/timelimit.png
       hash: md5
-      md5: b1247810d08aba7574d08f7d013759df
-      size: 10710
+      md5: 9b5928c5caec723039049c0aed2cb2a2
+      size: 10598
     - path: data/quadrature/timelimit.tikz
       hash: md5
-      md5: 951c25d5ea482b7ddd4c830dc9b8cb47
-      size: 15875
+      md5: 00ba89a8665c0a6565fac91aa742793d
+      size: 7425
     - path: data/quadrature/timing.png
       hash: md5
-      md5: 73a06beebe8166a3532d11055ad95b2e
-      size: 10210
+      md5: e0bb5e02fad39c6b1e416354c70e912c
+      size: 8592
     - path: data/quadrature/timing.tikz
       hash: md5
-      md5: 9d9743fe91ba0dff56a92779a8707d5e
-      size: 14704
+      md5: f0f72cc56aea32c7d1882e549a7869fc
+      size: 7461
   active_learning:
     cmd: julia --project=. experiments/active_learning.jl
     deps:

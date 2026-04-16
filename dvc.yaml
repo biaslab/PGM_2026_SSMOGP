@@ -40,3 +40,13 @@ stages:
     metrics:
       - data/quadrature/metrics.json:
           cache: false
+
+  chain_ablation:
+    cmd: julia --project=. experiments/chain_ablation.jl
+    deps:
+      - experiments/chain_ablation.jl
+      - src
+    params:
+      - chain_ablation
+    outs:
+      - data/chain_ablation/
