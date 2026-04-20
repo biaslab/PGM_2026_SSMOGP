@@ -210,7 +210,7 @@ stages:
           Q: 6
           n_spatial: 3
           n_temporal: 4
-          steps: 40
+          steps: 150
           n_seed: 10
           beta: 2.0
           R_diag_init: 0.2
@@ -226,6 +226,16 @@ stages:
           - 7
           - 8
           - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          - 16
+          - 17
+          - 18
+          - 19
           ls:
           - 1.0
           - 1.5
@@ -243,44 +253,44 @@ stages:
     outs:
     - path: data/partial_obs/comparison.json
       hash: md5
-      md5: 41f20d77fdb9c4c75403832f6eb979c3
-      size: 200253
+      md5: fc4511a81c4ecc1efd1408bb5e8a8392
+      size: 1436224
     - path: data/partial_obs/convergence.png
       hash: md5
-      md5: 9690952f46819ca0a9062bfb516230ff
-      size: 18431
+      md5: 17a18142636db5c5f1a2a9a99108a8ca
+      size: 19476
     - path: data/partial_obs/convergence.tikz
       hash: md5
-      md5: 8e9d7028e0464a45dc1a080870b3a63c
-      size: 44601
+      md5: 8cc94c10bcb1919571c329b2b0901196
+      size: 147001
     - path: data/partial_obs/metrics.json
       hash: md5
-      md5: eca35ab9438376a5d2517cabc28aac17
-      size: 741
+      md5: a8608230e6e50b9985cf8d9d3cb8aef0
+      size: 757
     - path: data/partial_obs/mnll.png
       hash: md5
-      md5: 90b7d8bbcfc6cbbd37c4459685b92882
-      size: 17209
+      md5: 594ebfc2d152a404a3e9d51c63d4af46
+      size: 19365
     - path: data/partial_obs/mnll.tikz
       hash: md5
-      md5: 56c7fa77836cc73217a5d302dd79b516
-      size: 37879
+      md5: f6764896fe0124344beaa8aa7c30ae53
+      size: 123062
     - path: data/partial_obs/rmse.png
       hash: md5
-      md5: 657c4930ca88372473e564b975e3bedb
-      size: 17651
+      md5: 98898b3284184ae4642492c9035d2a3f
+      size: 19904
     - path: data/partial_obs/rmse.tikz
       hash: md5
-      md5: dd71731538c80bcd111ada061a9c2ed1
-      size: 37107
+      md5: 50def9387c1a883c76b3a7ca35dcddf8
+      size: 120395
     - path: data/partial_obs/timing.png
       hash: md5
-      md5: 094e74f46646270ccbd13314ebb0ef55
-      size: 12605
+      md5: f9db73f5bde75bb93138a173bd18abc3
+      size: 14130
     - path: data/partial_obs/timing.tikz
       hash: md5
-      md5: 39572e5979a714ea5f2bf4ced12888a0
-      size: 10752
+      md5: 8b3e09aef0074b3d0a3a17a10db75ef9
+      size: 26815
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:
@@ -300,7 +310,7 @@ stages:
           d: 1
           D: 6
           Q: 3
-          steps: 40
+          steps: 150
           n_seed: 10
           R_diag_init: 0.1
           log_every: 5
@@ -315,6 +325,16 @@ stages:
           - 7
           - 8
           - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          - 16
+          - 17
+          - 18
+          - 19
           ls:
           - 1.0
           - 1.5
@@ -326,44 +346,44 @@ stages:
     outs:
     - path: data/quadrature/comparison.json
       hash: md5
-      md5: 03b59fe02ea07b7b0b18357ddc0d9050
-      size: 90739
+      md5: 0c81bf62a0a5e07259cd0ab2b70b495e
+      size: 645397
     - path: data/quadrature/integral_error.png
       hash: md5
-      md5: 34751d85adf806363ce9cf76ba71012b
-      size: 13975
+      md5: 5c36044f28bf69afb9ff9a2d81a4b8d6
+      size: 13366
     - path: data/quadrature/integral_error.tikz
       hash: md5
-      md5: 6a4a9609855452fb7ce4302c330b0de7
-      size: 20507
+      md5: d0aedff571e2deec51c9dd51700ba7be
+      size: 62230
     - path: data/quadrature/metrics.json
       hash: md5
-      md5: 5d4b2b8cb1535aa940d34efa1e6ea007
-      size: 374
+      md5: 870a67c9e2cd8a915dd82bfa80e1fbca
+      size: 375
     - path: data/quadrature/rmse.png
       hash: md5
-      md5: 49ea9e5f4639f13e45fe01bbdc7ed21b
-      size: 14089
+      md5: 324a18548a48269c9038159a9145686b
+      size: 12438
     - path: data/quadrature/rmse.tikz
       hash: md5
-      md5: 32e821107268865bd1129c29320401ac
-      size: 20443
+      md5: ad4775c2da83657c0fbce145ab169b2f
+      size: 61941
     - path: data/quadrature/timelimit.png
       hash: md5
-      md5: 9b5928c5caec723039049c0aed2cb2a2
-      size: 10598
+      md5: 403749c1a589e52cca478a766043632c
+      size: 10884
     - path: data/quadrature/timelimit.tikz
       hash: md5
-      md5: 00ba89a8665c0a6565fac91aa742793d
-      size: 7425
+      md5: 29a260ee82928bb688383aa4ea646204
+      size: 16189
     - path: data/quadrature/timing.png
       hash: md5
-      md5: e0bb5e02fad39c6b1e416354c70e912c
-      size: 8592
+      md5: f846eb52f2a9df60d54b8383540193fc
+      size: 9584
     - path: data/quadrature/timing.tikz
       hash: md5
-      md5: f0f72cc56aea32c7d1882e549a7869fc
-      size: 7461
+      md5: 04556a5e62c86c0cf3cd07b9750fc41a
+      size: 15536
   active_learning:
     cmd: julia --project=. experiments/active_learning.jl
     deps:
@@ -426,3 +446,76 @@ stages:
       hash: md5
       md5: 98f8fcef6428465978452dc1ec7b4b2f
       size: 9012
+  chain_ablation:
+    cmd: julia --project=. experiments/chain_ablation.jl
+    deps:
+    - path: experiments/chain_ablation.jl
+      hash: md5
+      md5: 12b4b85ec7d48a130bbdd80846774691
+      size: 5353
+    - path: src
+      hash: md5
+      md5: 52df0d80b540a538057ef873f1a3f7b1.dir
+      size: 89814
+      nfiles: 13
+    params:
+      params.yaml:
+        chain_ablation:
+          N: 500
+          d: 4
+          D: 12
+          Q: 6
+          n_spatial: 3
+          n_temporal: 4
+          steps: 100
+          n_seed: 10
+          beta: 2.0
+          R_diag_init: 0.2
+          log_every: 10
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          - 16
+          - 17
+          - 18
+          - 19
+          start_indices:
+          - 1
+          - 53
+          - 127
+          - 291
+          - 473
+          ls:
+          - 1.0
+          - 1.5
+          - 2.0
+          - 2.5
+          - 3.0
+          - 3.5
+          sigma2s:
+          - 3.0
+          - 3.0
+          - 2.0
+          - 2.0
+          - 1.0
+          - 1.0
+    outs:
+    - path: data/chain_ablation/
+      hash: md5
+      md5: a1664257cb3be59d09b7169b856d6eb7.dir
+      size: 989950
+      nfiles: 2
