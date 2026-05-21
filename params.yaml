@@ -22,6 +22,33 @@ partial_obs:
   ls: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
   sigma2s: [3.0, 3.0, 2.0, 2.0, 1.0, 1.0]
 
+ett_forecast:
+  # ETT oil-temperature forecasting on ETTh1 (place data at data/ett/ETTh1.csv).
+  # d=1 input (time), D=4 outputs (HUFL, MUFL, LUFL, OT).
+  # ROLLING one-step-ahead: at each test timestamp t, observe all training
+  # (with dropout) + ground truth at earlier test points (< t), predict t.
+  # Dropout applied per (timestamp, output) on the training half only.
+  N: 500
+  Q: 3
+  cols: ["HUFL", "MUFL", "LUFL", "OT"]
+  train_frac: 0.9        # 450 training timestamps; rolling window starts at 451
+  n_test_steps: 25       # number of rolling cursors (= predictions made per horizon)
+  # test_dropout_mode: :none  → test region fully revealed (one-step has ground-truth past)
+  #                    :same_as_train → drop test entries at the same rate as training
+  test_dropout_mode: "same_as_train"
+  dropouts: [0.0, 0.3, 0.6]
+  horizons: [1, 3, 5, 10]   # forecast-ahead steps to sweep
+  plot_horizon: 10          # which horizon to draw in predictions_ot.png
+  seeds: [0, 1, 2, 3, 4]
+  R_diag_init: 0.2
+  log_every: 1
+  # Length scales are in normalized-step units (every step = 1 after dist_norm).
+  # With ETTh1 subsampled 17k -> 500 (stride 34h), short=~few days, long=~week.
+  # ℓ > ~30 makes the Matérn-3/2 transition matrix A ≈ I and process noise Q ≈ 0,
+  # which destabilises the SS-GP message passing — keep ℓ_max ≲ 20.
+  ls: [1.0, 4.0, 16.0]
+  sigma2s: [3.0, 2.0, 1.0]
+
 quadrature:
   # Bayesian Quadrature on 1D synthetic benchmark (sinusoidal latents)
   # d=1 means NN chain = natural ordering, so SS-GP is exact

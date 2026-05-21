@@ -17,6 +17,8 @@ include("baseline.jl")
 include("partial_obs.jl")
 include("sequential_design.jl")
 include("benchmarks.jl")
+include("data_ett.jl")
+include("forecasting.jl")
 
 export AbstractBOState, ExperimentConfig, BOResult
 export POState, BaselinePOState, BaselineState
@@ -37,5 +39,8 @@ export SDResult
 export variance_acquisition, baseline_po_variance_acquisition
 export run_sd_po!, run_sd_baseline_po!, run_sd_comparison
 export run_bq_comparison
+export load_etth1
+export setup_forecast, setup_forecast_po, setup_forecast_baseline_po
+export run_forecast_po, run_forecast_baseline_po, run_ett_comparison
 
 end # module RxBayesOpt

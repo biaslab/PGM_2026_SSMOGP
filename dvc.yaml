@@ -18,6 +18,32 @@ stages:
       - data/partial_obs/metrics.json:
           cache: false
 
+  ett_forecast:
+    cmd: julia --project=. experiments/ett_forecast.jl
+    deps:
+      - experiments/ett_forecast.jl
+      - src
+      - data/ett/ETTh1.csv
+    params:
+      - ett_forecast
+    outs:
+      - data/ett_forecast/comparison.json
+      - data/ett_forecast/mse_vs_dropout.png
+      - data/ett_forecast/mse_vs_dropout.tikz
+      - data/ett_forecast/nll_vs_dropout.png
+      - data/ett_forecast/nll_vs_dropout.tikz
+      - data/ett_forecast/predictions_ot.png
+      - data/ett_forecast/predictions_ot.tikz
+      - data/ett_forecast/timing.png
+      - data/ett_forecast/timing.tikz
+      - data/ett_forecast/mse_vs_horizon.png
+      - data/ett_forecast/mse_vs_horizon.tikz
+      - data/ett_forecast/nll_vs_horizon.png
+      - data/ett_forecast/nll_vs_horizon.tikz
+    metrics:
+      - data/ett_forecast/metrics.json:
+          cache: false
+
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:

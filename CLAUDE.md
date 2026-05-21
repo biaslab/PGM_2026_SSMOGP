@@ -18,6 +18,7 @@ params.yaml               — Experiment hyperparameters (DVC-tracked)
 dvc.yaml                  — DVC pipeline definition (1 stage)
 experiments/
   partial_obs.jl          — Partial observations — FFG modularity (d=6, D=4)
+  ett_forecast.jl         — ETTh1 oil-temperature forecasting (d=1, D=4)
 experiments.jl            — Legacy: ad-hoc eval_blackbox, single SS-GP run
 experiments_baseline.jl   — Legacy: baseline-only runner
 experiments_comparison.jl — Legacy: multi-seed comparison
@@ -34,6 +35,8 @@ src/
   baseline.jl             — BaselineState, setup_baseline, run_bo_baseline! (LMC kernel-matrix GP)
   partial_obs.jl          — POState, BaselinePOState, setup_po, run_bo_po!, partial-obs baseline, run_po_comparison
   benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model)
+  data_ett.jl             — load_etth1 (reads data/ett/ETTh1.csv, subsamples N timestamps)
+  forecasting.jl          — setup_forecast, run_forecast_po, run_forecast_baseline_po, run_ett_comparison
 ```
 
 ## Code Map
@@ -102,6 +105,22 @@ src/
 - Partial observation on environmental monitoring benchmark (d=4, D=12, N=500, 5 seeds)
 - 4-way: SS-full, SS-PO, KM-full, KM-PO — demonstrates FFG modularity
 
+### data_ett.jl
+- `load_etth1(; N, csv_path, cols)` — reads `data/ett/ETTh1.csv`, evenly subsamples N rows, extracts the requested columns. Returns `(X, Y, col_names, ot_idx)` where X is N×1 normalized time on [-1, 1].
+
+### forecasting.jl
+- `_generate_forecast_mask(N, D, train_frac, dropout, rng)` — mask is true on training half with prob `1-dropout`, false on test half
+- `setup_forecast(cfg, X, Y_data, mask)` — natural 1D ordering, per-output standardization from training-observed entries only (no test leakage)
+- `setup_forecast_po(cfg, setup_data)` / `setup_forecast_baseline_po(cfg, setup_data)` — variants of setup_po / setup_baseline_po that reuse the mask from setup_data
+- `run_forecast_po(cfg, setup_data)` — single SS-GP inference call → predictions in original scale
+- `run_forecast_baseline_po(cfg, setup_data)` — single KM-GP inference call
+- `_compute_test_mse_nll(μ_pred, σ_pred, Ytrue, mask, d_target)` — MSE and NLL restricted to test rows for a specific output index
+- `run_ett_comparison(cfg, X, Y_data; seeds, dropouts, train_frac, d_target, output_dir)` — sweep, save `comparison.json` + MSE/NLL plots
+
+### experiments/ett_forecast.jl
+- ETTh1 forecasting (d=1, D=4, N=500), 3 dropout levels × 5 seeds × 2 methods
+- One-shot regression (no acquisition loop); metrics are MSE and NLL on OT
+
 ### Legacy scripts
 - `experiments.jl` — ad-hoc eval_blackbox, single SS-GP run
 - `experiments_baseline.jl` — baseline-only runner
@@ -127,6 +146,7 @@ Configuration is in `params.yaml`. Changes to params or source code trigger re-r
 
 ### Stages
 1. **partial_obs** — Partial observation 4-way comparison on environmental benchmark (d=4, D=12, N=500, 5 seeds). Outputs: `data/partial_obs/`
+2. **ett_forecast** — ETTh1 forecasting (d=1, D=4, N=500), MSE & NLL on OT vs dropout. Needs `data/ett/ETTh1.csv` checked in or downloaded manually. Outputs: `data/ett_forecast/`
 
 ## Known Issues / Improvement Opportunities
 - No test suite
