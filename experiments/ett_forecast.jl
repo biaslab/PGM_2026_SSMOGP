@@ -63,6 +63,7 @@ results = run_ett_comparison(cfg, X, Y;
     seeds=seeds, dropouts=dropouts, horizons=horizons,
     train_frac=train_frac, n_test_steps=n_test_steps, d_target=ot_idx,
     test_dropout_mode=test_dropout_mode, plot_horizon=plot_horizon,
+    col_names=loaded.col_names,
     output_dir=output_dir)
 
 # ── DVC metrics: median (robust) and mean across seeds, plus diverged count ──

@@ -37,7 +37,7 @@ ett_forecast:
   #                    :same_as_train → drop test entries at the same rate as training
   test_dropout_mode: "same_as_train"
   dropouts: [0.0, 0.3, 0.6]
-  horizons: [1, 3, 5, 10]   # forecast-ahead steps to sweep
+  horizons: [1] #, 3, 5, 10]   # forecast-ahead steps to sweep
   plot_horizon: 10          # which horizon to draw in predictions_ot.png
   seeds: [0, 1, 2, 3, 4]
   R_diag_init: 0.2

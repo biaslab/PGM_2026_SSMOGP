@@ -79,7 +79,16 @@ for dropout in dropouts
     plot_payload[dropout] = (;
         ctx_x    = base.Xo[ctx_idx, 1],
         ctx_y    = [base.Y_ordered[i][ot_idx] for i in ctx_idx],
+        ctx_y_all = [base.Y_ordered[i] for i in ctx_idx],
         ctx_idx  = collect(ctx_idx),
+        train_obs_x_per_d = [
+            [base.Xo[i, 1] for i in ctx_start:n_train if base.base_mask[i, d_out]]
+            for d_out in 1:cfg.D
+        ],
+        train_obs_y_per_d = [
+            [base.Y_ordered[i][d_out] for i in ctx_start:n_train if base.base_mask[i, d_out]]
+            for d_out in 1:cfg.D
+        ],
         train_obs_x = [base.Xo[i, 1] for i in ctx_start:n_train
                        if base.base_mask[i, ot_idx]],
         train_obs_y = [base.Y_ordered[i][ot_idx] for i in ctx_start:n_train
@@ -89,6 +98,8 @@ for dropout in dropouts
         km_μ = out_km.μ_t, km_σ = out_km.σ_t,
         ss_full_μ = out_ss.full_μ, ss_full_σ = out_ss.full_σ,
         km_full_μ = out_km.full_μ, km_full_σ = out_km.full_σ,
+        ss_full_μ_all = out_ss.full_μ_all, ss_full_σ_all = out_ss.full_σ_all,
+        km_full_μ_all = out_km.full_μ_all, km_full_σ_all = out_km.full_σ_all,
         n_train  = n_train, horizon = plot_horizon,
     )
 end
@@ -97,6 +108,9 @@ end
 RxBayesOpt._plot_ett_forecast(results, dropouts, horizons, output_dir)
 RxBayesOpt._plot_ett_mse_vs_horizon(results, dropouts, horizons, output_dir)
 RxBayesOpt._plot_ett_predictions(plot_payload, dropouts, output_dir; horizon=plot_horizon)
+RxBayesOpt._plot_ett_predictions_per_output(plot_payload, dropouts, output_dir,
+                                            loaded.col_names;
+                                            horizon=plot_horizon, d_target=ot_idx)
 RxBayesOpt._plot_ett_timing(results, dropouts, horizons, output_dir)
 
 @info "Replot complete" output_dir

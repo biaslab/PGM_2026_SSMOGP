@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(julia --project=. experiments/ett_forecast.jl)"
+      "Bash(julia --project=. experiments/ett_forecast.jl)",
+      "Bash(ls -la /Users/evanpelt/papers/WouterN-2026-RMP-BayesOpt/probnum/contents)",
+      "Bash(ls -la main.fdb_latexmk)",
+      "Bash(head -5 /Users/evanpelt/papers/WouterN-2026-RMP-BayesOpt/main.fls)",
+      "Bash(git -C /Users/evanpelt/papers/WouterN-2026-RMP-BayesOpt log --oneline -10)",
+      "Bash(git -C /Users/evanpelt/papers/WouterN-2026-RMP-BayesOpt show HEAD --stat)"
     ]
   }
 }

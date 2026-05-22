@@ -194,6 +194,12 @@ function _build_rolling_setup(cfg::ExperimentConfig, X::Matrix{Float64},
     Y_ordered = Y_data[order]
     mask_ordered = base_mask[order, :]
 
+    # Largest index in the training band (rows beyond it have all-false initial mask).
+    last_train = 1
+    for i in 1:N
+        any(@view mask_ordered[i, :]) && (last_train = i)
+    end
+
     Δ = zeros(N)
     for i in 2:N
         Δ[i] = sqrt(sqdist(row(Xo, i), row(Xo, i - 1)))
@@ -201,10 +207,7 @@ function _build_rolling_setup(cfg::ExperimentConfig, X::Matrix{Float64},
     dist_norm = median(Δ[2:end])
     Δ ./= dist_norm
 
-    rng = MersenneTwister(cfg.seed)
-    W = randn(rng, cfg.D, cfg.Q) .* 0.5
-    blocks = additive_multioutput_blocks_from_Δ(Δ; ℓs=cfg.ℓs, σ2s=cfg.σ2s, W)
-
+    # ── Per-output standardisation from training-observed entries only ──
     μy = zeros(cfg.D)
     σy = ones(cfg.D)
     for d_out in 1:cfg.D
@@ -216,6 +219,41 @@ function _build_rolling_setup(cfg::ExperimentConfig, X::Matrix{Float64},
         μy[d_out] = mean(vals)
         σy[d_out] = std(vals) + 1e-8
     end
+
+    # ── Mixing matrix W: top-Q principal components of standardised training data ──
+    # With orthonormal W and σ²s, prior variance per output d is
+    #     var_d = Σ_q W[d,q]² · σ²s[q]
+    # whose average over d is (1/D) Σ_q σ²s[q] · ‖W[:,q]‖² = (1/D) Σ_q σ²s[q].
+    # Rescale σ²s so this average equals 1, matching the standardised data scale.
+    full_rows = [i for i in 1:last_train if all(@view mask_ordered[i, :])]
+    Z = if length(full_rows) >= 3 * cfg.Q
+        z = zeros(length(full_rows), cfg.D)
+        for (k, i) in enumerate(full_rows)
+            z[k, :] = (Y_ordered[i] .- μy) ./ σy
+        end
+        z
+    else
+        # Fall back to per-(point,output) mean imputation across train rows
+        @warn "Only $(length(full_rows)) fully-observed rows; falling back to mean-imputed PCA matrix"
+        z = zeros(last_train, cfg.D)
+        for i in 1:last_train, d_out in 1:cfg.D
+            z[i, d_out] = mask_ordered[i, d_out] ?
+                          (Y_ordered[i][d_out] - μy[d_out]) / σy[d_out] : 0.0
+        end
+        z
+    end
+    F = svd(Z)
+    W = Matrix(F.V[:, 1:cfg.Q])                          # D × Q, columns orthonormal
+    σ²s_eff = cfg.σ2s .* (cfg.D / sum(cfg.σ2s))          # avg per-output prior var = 1
+    blocks = additive_multioutput_blocks_from_Δ(Δ; ℓs=cfg.ℓs, σ2s=σ²s_eff, W)
+
+    # ── Diagnostics: log what the prior actually implies vs the data ──
+    emp_var = [var([Z[i, d_out] for i in 1:size(Z, 1)]) for d_out in 1:cfg.D]
+    prior_var = [sum(W[d_out, q]^2 * σ²s_eff[q] for q in 1:cfg.Q) for d_out in 1:cfg.D]
+    emp_corr = cor(Z; dims=1)
+    @info "Rolling-setup diagnostics (standardised scale)" cfg_seed=cfg.seed n_full_rows=length(full_rows) emp_var prior_var σ²s_eff
+    @info "Empirical output correlation" emp_corr
+    @info "Mixing matrix W (D × Q, orthonormal)" W
 
     (; Xo, Δ, blocks, W, μy, σy, dist_norm, Y_ordered, base_mask=mask_ordered)
 end
@@ -318,7 +356,10 @@ function run_one_step_ahead_po(cfg::ExperimentConfig, base, cursor_range, d_targ
     # Same sanity check as the rolling loop: if any |μ_std| > 50 or non-finite,
     # discard the readout. Rolling MSE/NLL above are unaffected; only the
     # cosmetic training-region overlay on the predictions plot is dropped.
+    # We grab posteriors for ALL D outputs (not just d_target) so per-output
+    # prediction plots can use them.
     full_μ = Float64[]; full_σ = Float64[]
+    full_μ_all = Vector{Float64}[]; full_σ_all = Vector{Float64}[]
     if !diverged
         try
             res_final = infer(
@@ -328,14 +369,16 @@ function run_one_step_ahead_po(cfg::ExperimentConfig, base, cursor_range, d_targ
                     τ=τ, e_vecs=e_vecs, N=N, D=D),
                 data=(Y=Y_flat,),
                 options=(limit_stack_depth=1000,))
-            full_μ_std = [mean(res_final.posteriors[:my][i])[d_target] for i in 1:N]
-            full_σ_std = [sqrt(var(res_final.posteriors[:my][i])[d_target]) for i in 1:N]
-            if any(!isfinite, full_μ_std) || any(!isfinite, full_σ_std) ||
-               maximum(abs, full_μ_std) > 50
-                @warn "SS-GP full-N readout diverged; skipping train-region overlay" max_abs_μ=maximum(abs, full_μ_std)
+            μ_std_mat = [mean(res_final.posteriors[:my][i]) for i in 1:N]  # vector of D-vectors
+            σ_std_mat = [sqrt.(var(res_final.posteriors[:my][i])) for i in 1:N]
+            μ_target = [μ_std_mat[i][d_target] for i in 1:N]
+            if any(any.(!isfinite, μ_std_mat)) || maximum(abs, μ_target) > 50
+                @warn "SS-GP full-N readout diverged; skipping train-region overlay" max_abs_μ=maximum(abs, μ_target)
             else
-                full_μ = [full_μ_std[i] * base.σy[d_target] + base.μy[d_target] for i in 1:N]
-                full_σ = [full_σ_std[i] * base.σy[d_target] for i in 1:N]
+                full_μ = [μ_std_mat[i][d_target] * base.σy[d_target] + base.μy[d_target] for i in 1:N]
+                full_σ = [σ_std_mat[i][d_target] * base.σy[d_target] for i in 1:N]
+                full_μ_all = [μ_std_mat[i] .* base.σy .+ base.μy for i in 1:N]
+                full_σ_all = [σ_std_mat[i] .* base.σy for i in 1:N]
             end
         catch e
             @warn "SS-GP full-N readout failed" exception=e
@@ -344,7 +387,7 @@ function run_one_step_ahead_po(cfg::ExperimentConfig, base, cursor_range, d_targ
 
     noise_var = cfg.R_diag_init * base.σy[d_target]^2
     if isempty(y_t)
-        return (; μ_t, σ_t, y_t, x_t, full_μ, full_σ,
+        return (; μ_t, σ_t, y_t, x_t, full_μ, full_σ, full_μ_all, full_σ_all,
                   mse=NaN, nll=NaN, diverged=true, time=total_time)
     end
     se = sum((y_t[i] - μ_t[i])^2 for i in eachindex(y_t))
@@ -353,7 +396,7 @@ function run_one_step_ahead_po(cfg::ExperimentConfig, base, cursor_range, d_targ
             0.5 * log(2π * σ2) + (y_t[i] - μ_t[i])^2 / (2σ2)
         end
         for i in eachindex(y_t))
-    (; μ_t, σ_t, y_t, x_t, full_μ, full_σ,
+    (; μ_t, σ_t, y_t, x_t, full_μ, full_σ, full_μ_all, full_σ_all,
        mse=se / length(y_t), nll=nll / length(y_t),
        diverged, time=total_time)
 end
@@ -425,18 +468,21 @@ function run_one_step_ahead_baseline_po(cfg::ExperimentConfig, base, cursor_rang
 
     # Full-N posterior with final state. Same sanity check as SS-GP path —
     # KM-GP almost never diverges but the guard is cheap and keeps both branches
-    # consistent.
+    # consistent. We capture all D outputs for multi-output prediction plots.
     full_μ = Float64[]; full_σ = Float64[]
+    full_μ_all = Vector{Float64}[]; full_σ_all = Vector{Float64}[]
     try
         pred_final = _lmc_predict_po(bl_state)
-        full_μ_std = [pred_final.μ_pred[i][d_target] for i in 1:N]
-        full_σ_std = [pred_final.σ_pred[i][d_target] for i in 1:N]
-        if any(!isfinite, full_μ_std) || any(!isfinite, full_σ_std) ||
-           maximum(abs, full_μ_std) > 50
-            @warn "KM-GP full-N readout diverged; skipping train-region overlay" max_abs_μ=maximum(abs, full_μ_std)
+        μ_std_mat = pred_final.μ_pred  # length-N vector of D-vectors
+        σ_std_mat = pred_final.σ_pred
+        μ_target = [μ_std_mat[i][d_target] for i in 1:N]
+        if any(any.(!isfinite, μ_std_mat)) || maximum(abs, μ_target) > 50
+            @warn "KM-GP full-N readout diverged; skipping train-region overlay" max_abs_μ=maximum(abs, μ_target)
         else
-            full_μ = [full_μ_std[i] * base.σy[d_target] + base.μy[d_target] for i in 1:N]
-            full_σ = [full_σ_std[i] * base.σy[d_target] for i in 1:N]
+            full_μ = [μ_std_mat[i][d_target] * base.σy[d_target] + base.μy[d_target] for i in 1:N]
+            full_σ = [σ_std_mat[i][d_target] * base.σy[d_target] for i in 1:N]
+            full_μ_all = [μ_std_mat[i] .* base.σy .+ base.μy for i in 1:N]
+            full_σ_all = [σ_std_mat[i] .* base.σy for i in 1:N]
         end
     catch e
         @warn "KM-GP full-N readout failed" exception=e
@@ -449,7 +495,7 @@ function run_one_step_ahead_baseline_po(cfg::ExperimentConfig, base, cursor_rang
             0.5 * log(2π * σ2) + (y_t[i] - μ_t[i])^2 / (2σ2)
         end
         for i in eachindex(y_t))
-    (; μ_t, σ_t, y_t, x_t, full_μ, full_σ,
+    (; μ_t, σ_t, y_t, x_t, full_μ, full_σ, full_μ_all, full_σ_all,
        mse=se / length(y_t), nll=nll / length(y_t),
        diverged=false, time=total_time)
 end
@@ -521,12 +567,20 @@ function run_ett_comparison(cfg_template::ExperimentConfig,
                             n_test_steps::Int=25,
                             test_dropout_mode::Symbol=:none,  # :none or :same_as_train
                             plot_horizon::Union{Int,Nothing}=nothing,
+                            col_names::Vector{String}=String[],
                             output_dir::AbstractString="data/ett_forecast")
     mkpath(output_dir)
     all_results = Dict{String, Any}[]
 
     plot_seed = first(seeds)
-    plot_horizon_use = plot_horizon === nothing ? maximum(horizons) : plot_horizon
+    # If the requested plot horizon isn't in the sweep, fall back to the longest
+    # horizon we'll actually compute. Otherwise the payload stays empty and
+    # predictions plots silently no-op.
+    requested_h = plot_horizon === nothing ? maximum(horizons) : plot_horizon
+    plot_horizon_use = requested_h in horizons ? requested_h : maximum(horizons)
+    if plot_horizon_use != requested_h
+        @warn "plot_horizon=$requested_h not in horizons=$horizons; using $plot_horizon_use instead"
+    end
     plot_payload = Dict{Float64, Any}()
 
     # The full test region spans cursors n_train+1..n_train+n_test_steps and
@@ -575,7 +629,17 @@ function run_ett_comparison(cfg_template::ExperimentConfig,
             plot_payload[dropout] = (;
                 ctx_x    = base.Xo[ctx_idx, 1],
                 ctx_y    = [base.Y_ordered[i][d_target] for i in ctx_idx],
+                ctx_y_all = [base.Y_ordered[i] for i in ctx_idx],   # D-vector per row
                 ctx_idx  = collect(ctx_idx),
+                train_obs_x_per_d = [
+                    [base.Xo[i, 1] for i in ctx_start:n_train if base.base_mask[i, d_out]]
+                    for d_out in 1:cfg.D
+                ],
+                train_obs_y_per_d = [
+                    [base.Y_ordered[i][d_out] for i in ctx_start:n_train if base.base_mask[i, d_out]]
+                    for d_out in 1:cfg.D
+                ],
+                # Back-compat fields (used by single-OT plot)
                 train_obs_x = [base.Xo[i, 1] for i in ctx_start:n_train
                                if base.base_mask[i, d_target]],
                 train_obs_y = [base.Y_ordered[i][d_target] for i in ctx_start:n_train
@@ -586,6 +650,8 @@ function run_ett_comparison(cfg_template::ExperimentConfig,
                 km_μ     = out_km.μ_t, km_σ = out_km.σ_t,
                 ss_full_μ = out_ss.full_μ, ss_full_σ = out_ss.full_σ,
                 km_full_μ = out_km.full_μ, km_full_σ = out_km.full_σ,
+                ss_full_μ_all = out_ss.full_μ_all, ss_full_σ_all = out_ss.full_σ_all,
+                km_full_μ_all = out_km.full_μ_all, km_full_σ_all = out_km.full_σ_all,
                 n_train  = n_train, horizon = h,
             )
         end
@@ -612,6 +678,10 @@ function run_ett_comparison(cfg_template::ExperimentConfig,
     _plot_ett_mse_vs_horizon(all_results, dropouts, horizons, output_dir)
     _plot_ett_predictions(plot_payload, dropouts, output_dir;
                           horizon=plot_horizon_use)
+    if !isempty(col_names)
+        _plot_ett_predictions_per_output(plot_payload, dropouts, output_dir, col_names;
+                                         horizon=plot_horizon_use, d_target=d_target)
+    end
     _plot_ett_timing(all_results, dropouts, horizons, output_dir)
 
     all_results
@@ -811,6 +881,94 @@ function _plot_ett_predictions(plot_payload, dropouts, output_dir; horizon::Int=
 
     save_plot(joinpath(output_dir, "predictions_ot")) do
         plot(panels...; layout=(length(panels), 1), size=(800, 300 * length(panels)))
+    end
+end
+
+"""
+    _plot_ett_predictions_per_output(plot_payload, dropouts, output_dir, col_names; horizon, d_target)
+
+For each output `d ∈ 1:D` emit `predictions_<colname>.png` with one panel per
+dropout level: truth + training observations + GP posterior μ ± 2σ. The
+`d_target` output (typically OT) additionally shows the rolling h-step
+predictions in the test region.
+"""
+function _plot_ett_predictions_per_output(plot_payload, dropouts, output_dir,
+                                          col_names::Vector{String};
+                                          horizon::Int=1, d_target::Int=0)
+    isempty(plot_payload) && return
+    theme_kw = publication_theme_kwargs()
+    gp_color = :navy
+    D_out = length(col_names)
+
+    for d_out in 1:D_out
+        col = col_names[d_out]
+        is_target = (d_out == d_target)
+        panels = []
+        for (i, dp) in enumerate(dropouts)
+            haskey(plot_payload, dp) || continue
+            pd = plot_payload[dp]
+
+            ss_all_ok = !isempty(pd.ss_full_μ_all) && length(pd.ss_full_μ_all) >= maximum(pd.ctx_idx)
+            km_all_ok = !isempty(pd.km_full_μ_all) && length(pd.km_full_μ_all) >= maximum(pd.ctx_idx)
+            post_src  = ss_all_ok ? :ss : (km_all_ok ? :km : :none)
+
+            title_str = "$col — dropout=$(round(Int, 100*dp))%" *
+                        (is_target ? " — h=$horizon" : "")
+            p = plot(; xlabel="Time (normalized)", ylabel=col,
+                     title=title_str,
+                     legend=(i == 1 ? :topleft : false),
+                     theme_kw...)
+
+            # Truth for this output over the plotted window
+            ctx_y_d = [y[d_out] for y in pd.ctx_y_all]
+            plot!(p, pd.ctx_x, ctx_y_d, lw=1.2, color=:gray, alpha=0.6,
+                  label="$col (truth)")
+
+            boundary = !isempty(pd.test_x) ? pd.test_x[1] : pd.ctx_x[end]
+            vline!(p, [boundary], color=:black, lw=1, linestyle=:dot, label="train/test")
+
+            # Full-N posterior for this output (single curve, SS≡KM in 1D)
+            post_label = "GP posterior μ ± 2σ  (SS-GP ≡ KM-GP)"
+            if post_src == :ss
+                μ = [pd.ss_full_μ_all[i_ctx][d_out] for i_ctx in pd.ctx_idx]
+                σ = [pd.ss_full_σ_all[i_ctx][d_out] for i_ctx in pd.ctx_idx]
+                plot!(p, pd.ctx_x, μ, ribbon=2 .* σ, fillalpha=0.18, lw=1.5,
+                      color=gp_color, label=post_label)
+            elseif post_src == :km
+                μ = [pd.km_full_μ_all[i_ctx][d_out] for i_ctx in pd.ctx_idx]
+                σ = [pd.km_full_σ_all[i_ctx][d_out] for i_ctx in pd.ctx_idx]
+                plot!(p, pd.ctx_x, μ, ribbon=2 .* σ, fillalpha=0.18, lw=1.5,
+                      color=gp_color, label=post_label)
+            end
+
+            # Rolling h-step (only for d_target, where we actually roll-forecast)
+            if is_target
+                if !pd.ss_diverged && !isempty(pd.ss_μ)
+                    plot!(p, pd.test_x[1:length(pd.ss_μ)], pd.ss_μ, ribbon=2 .* pd.ss_σ,
+                          fillalpha=0.22, lw=2, color=gp_color, marker=:circle, ms=3,
+                          label="GP h-step μ ± 2σ  (SS-GP ≡ KM-GP)")
+                elseif !isempty(pd.km_μ)
+                    plot!(p, pd.test_x, pd.km_μ, ribbon=2 .* pd.km_σ, fillalpha=0.22, lw=2,
+                          color=gp_color, marker=:circle, ms=3,
+                          label="GP h-step μ ± 2σ  (SS-GP ≡ KM-GP)")
+                end
+            end
+
+            # Training observations for THIS output (dropout-masked)
+            if d_out <= length(pd.train_obs_x_per_d)
+                obs_x = pd.train_obs_x_per_d[d_out]
+                obs_y = pd.train_obs_y_per_d[d_out]
+                if !isempty(obs_x)
+                    scatter!(p, obs_x, obs_y, ms=2.5, color=:black,
+                             label="$col observed (train, w/ dropout)")
+                end
+            end
+
+            push!(panels, p)
+        end
+        save_plot(joinpath(output_dir, "predictions_$(lowercase(col))")) do
+            plot(panels...; layout=(length(panels), 1), size=(800, 280 * length(panels)))
+        end
     end
 end
 
