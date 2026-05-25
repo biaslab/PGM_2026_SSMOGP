@@ -44,6 +44,31 @@ function nn_chain_order(X::AbstractMatrix{<:Real})
 end
 
 """
+    nn_chain_quality(Xo) -> NamedTuple
+
+Diagnostic summary of an NN-chain ordering's "stretch": pairwise Euclidean
+distances between consecutive rows of `Xo`.
+
+In low input dimensions the chain links should be short and uniform; as `d`
+grows, even the nearest unvisited neighbour drifts further and the spread of
+`Δ` values widens — a direct fingerprint of the curse of dimensionality on
+the heuristic.
+
+Returns a NamedTuple with `mean_delta`, `median_delta`, `max_delta`,
+`min_delta`, `total_length`, and the raw vector `Δ` (length N-1).
+"""
+function nn_chain_quality(Xo::AbstractMatrix{<:Real})
+    N = size(Xo, 1)
+    Δ = [sqrt(sqdist(row(Xo, i), row(Xo, i - 1))) for i in 2:N]
+    (; mean_delta   = mean(Δ),
+       median_delta = median(Δ),
+       max_delta    = maximum(Δ),
+       min_delta    = minimum(Δ),
+       total_length = sum(Δ),
+       Δ            = Δ)
+end
+
+"""
     blockdiag(mats...) -> Matrix
 
 Construct a block-diagonal matrix from the given matrices.

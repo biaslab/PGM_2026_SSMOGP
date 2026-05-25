@@ -18,6 +18,7 @@ params.yaml               — Experiment hyperparameters (DVC-tracked)
 dvc.yaml                  — DVC pipeline definition (1 stage)
 experiments/
   partial_obs.jl          — Partial observations — FFG modularity (d=6, D=4)
+  dim_sweep.jl            — Input-dimension sweep on synthetic sensor network (SS vs KM vs Random)
 experiments.jl            — Legacy: ad-hoc eval_blackbox, single SS-GP run
 experiments_baseline.jl   — Legacy: baseline-only runner
 experiments_comparison.jl — Legacy: multi-seed comparison
@@ -33,7 +34,8 @@ src/
   bo.jl                   — setup_experiment, _current_best, save_results
   baseline.jl             — BaselineState, setup_baseline, run_bo_baseline! (LMC kernel-matrix GP)
   partial_obs.jl          — POState, BaselinePOState, setup_po, run_bo_po!, partial-obs baseline, run_po_comparison
-  benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model)
+  dim_sweep.jl            — run_dim_sweep, random-acquisition baseline, dim-sweep plots
+  benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model, sensor network)
 ```
 
 ## Code Map
@@ -49,6 +51,7 @@ src/
 - `row(X, i)` — zero-allocation row view
 - `sqdist(a, b)` — fast squared Euclidean distance (SIMD)
 - `nn_chain_order(X)` — greedy nearest-neighbor chain ordering
+- `nn_chain_quality(Xo)` — diagnostic summary of consecutive-chain distances (mean/median/max/min/total + raw Δ)
 - `blockdiag(mats...)` — manual block-diagonal matrix construction
 
 ### statespace.jl
@@ -97,10 +100,21 @@ src/
 - `hartmann6(x)` — Standard Hartmann 6-dimensional function on [0,1]^6, global max ≈ 3.3224
 - `make_mo_hartmann(; D, Q, W_seed)` — Factory: multi-output Hartmann via LMC mixing of permuted Hartmann-6 latents
 - `make_environmental(; n_spatial, n_temporal)` — Factory: environmental monitoring model (Bliznyuk et al. 2008, Maddox et al. NeurIPS 2021)
+- `make_synthetic_1d(; D, Q, W_seed)` — 1D sinusoidal multi-output benchmark (NN chain is exact)
+- `make_sensor_network(; d, D, station_seed, jitter_seed, σ_spatial)` — Synthetic d-parametric sensor-network benchmark: each input dim is one weather station, outputs are spatially-weighted saturating combinations
+
+### dim_sweep.jl
+- `_run_random_bo(cfg, eval_fn; Xo, setup_data)` — Random-acquisition baseline (uniform pick over unobserved)
+- `run_dim_sweep(cfg_template, eval_fn_factory; ds, seeds, output_dir)` — Sweep over input dim, compare SS-GP / KM-GP / Random and log NN-chain quality per (d, seed)
+- `_plot_dim_sweep(results, ds, output_dir)` — Per-d convergence + final-regret/time/chain-quality vs d
 
 ### experiments/partial_obs.jl
 - Partial observation on environmental monitoring benchmark (d=4, D=12, N=500, 5 seeds)
 - 4-way: SS-full, SS-PO, KM-full, KM-PO — demonstrates FFG modularity
+
+### experiments/dim_sweep.jl
+- Input-dimension sweep on synthetic sensor network (d ∈ {2,4,8,16,32}, D=3, N=200, 5 seeds)
+- 3-way: SS-GP vs KM-GP vs Random — quantifies NN-chain degradation with d
 
 ### Legacy scripts
 - `experiments.jl` — ad-hoc eval_blackbox, single SS-GP run
@@ -127,6 +141,7 @@ Configuration is in `params.yaml`. Changes to params or source code trigger re-r
 
 ### Stages
 1. **partial_obs** — Partial observation 4-way comparison on environmental benchmark (d=4, D=12, N=500, 5 seeds). Outputs: `data/partial_obs/`
+2. **dim_sweep** — Input-dimension sweep on synthetic sensor network (d ∈ {2,4,8,16,32}, D=3, N=200, 5 seeds). Outputs: `data/dim_sweep/`
 
 ## Known Issues / Improvement Opportunities
 - No test suite

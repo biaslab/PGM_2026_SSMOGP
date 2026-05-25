@@ -162,3 +162,49 @@ function make_synthetic_1d(; D::Int=6, Q::Int=3, W_seed::Int=42)
         W_true * f
     end
 end
+
+"""
+    make_sensor_network(; d, D=3, station_seed=42, jitter_seed=43, σ_spatial=0.3)
+
+Synthetic "sensor network" benchmark for sweeping the input dimension.
+
+Each of `d` input coordinates corresponds to one weather station at a fixed 2D
+position in [0, 1]². The function output is a `D`-vector of measurements at
+fixed downstream monitoring points; each monitor's reading is a spatially-
+weighted, saturating combination of the per-station inputs:
+
+    y_k(x) = Σ_i  W[k, i] * g(x_i),
+    g(z)   = u * exp(-u / 5),  u = 10 * sigmoid(z)        (rainfall-like, bounded)
+    W[k,i] = exp(-‖loc_i - mon_k‖² / (2 σ_spatial²)) + small jitter
+
+The spatial RBF weights make distant station/monitor pairs contribute little,
+so the d inputs are *not* globally highly correlated — adding sensors mostly
+extends the configuration space rather than duplicating information. This is
+what stresses the NN-chain ordering: as `d` grows, consecutive points in the
+NN chain become increasingly far apart in input space.
+
+Inputs are assumed standardized (matches `setup_experiment`). Station and
+monitor locations are deterministic in `station_seed`, so the function shape
+is reproducible across runs that change `d`.
+"""
+function make_sensor_network(; d::Int, D::Int=3, station_seed::Int=42,
+                              jitter_seed::Int=43, σ_spatial::Float64=0.3)
+    rng_loc = MersenneTwister(station_seed)
+    sensor_locs  = rand(rng_loc, d, 2)
+    monitor_locs = rand(rng_loc, D, 2)
+
+    rng_w = MersenneTwister(jitter_seed)
+    W = zeros(D, d)
+    for k in 1:D, i in 1:d
+        dx = sensor_locs[i, 1] - monitor_locs[k, 1]
+        dy = sensor_locs[i, 2] - monitor_locs[k, 2]
+        W[k, i] = exp(-(dx*dx + dy*dy) / (2 * σ_spatial^2))
+    end
+    W .+= 0.05 .* randn(rng_w, D, d)
+
+    function(x::AbstractVector{<:Real})
+        u = [10.0 * _sigmoid(x[i]) for i in 1:d]
+        g = [u[i] * exp(-u[i] / 5) for i in 1:d]
+        W * g
+    end
+end

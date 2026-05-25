@@ -36,3 +36,21 @@ quadrature:
   seeds: [0,1,2,3,4]
   ls: [1.0, 1.5, 2.0]
   sigma2s: [3.0, 2.0, 1.0]
+
+dim_sweep:
+  # Synthetic sensor-network sweep over input dimension d.
+  # Each input coordinate = one weather station; the function output is a
+  # spatially weighted, saturating combination of per-station readings.
+  # Goal: quantify NN-chain degradation with d. Compares SS-GP vs KM-GP vs Random.
+  ds: [2, 4, 8, 16, 32]
+  D: 3
+  Q: 2
+  N: 200
+  steps: 100
+  n_seed: 5
+  beta: 2.0
+  R_diag_init: 0.1
+  log_every: 20
+  seeds: [0, 1, 2, 3, 4]
+  ls: [1.0, 2.0]
+  sigma2s: [2.0, 1.0]

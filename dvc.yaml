@@ -34,3 +34,22 @@ stages:
     metrics:
       - data/quadrature/metrics.json:
           cache: false
+
+  dim_sweep:
+    cmd: julia --project=. experiments/dim_sweep.jl
+    deps:
+      - experiments/dim_sweep.jl
+      - src
+    params:
+      - dim_sweep
+    outs:
+      - data/dim_sweep/comparison.json
+      - data/dim_sweep/final_regret_vs_d.png
+      - data/dim_sweep/final_regret_vs_d.tikz
+      - data/dim_sweep/time_vs_d.png
+      - data/dim_sweep/time_vs_d.tikz
+      - data/dim_sweep/chain_quality_vs_d.png
+      - data/dim_sweep/chain_quality_vs_d.tikz
+    metrics:
+      - data/dim_sweep/metrics.json:
+          cache: false
