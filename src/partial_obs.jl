@@ -196,6 +196,41 @@ mutable struct BaselinePOState <: AbstractBOState
     Y::Vector{Union{Missing, Vector{Float64}}}
     μy::Vector{Float64}
     σy::Vector{Float64}
+    K_prior_full::Matrix{Float64}   # precomputed noise-free (D·N × D·N) LMC kernel
+end
+
+"""
+    _lmc_full_kernel(Xo, W, ℓs, σ2s, dist_norm) -> Matrix{Float64}
+
+Build the full noise-free (D·N × D·N) LMC covariance over all N points and all D
+outputs, using point-major flat indexing pair (point i, output d) → (i-1)*D + d
+(matching `Y_flat`).
+
+    K[(i,d),(j,e)] = Σ_q W[d,q]·W[e,q]·matern32(dist(i,j)/dist_norm, ℓs[q], σ2s[q])
+
+Computed once per `BaselinePOState`; the cov-restructuring baseline slices observed
+sub-blocks out of this matrix each BO step rather than rebuilding from scratch.
+"""
+function _lmc_full_kernel(Xo::AbstractMatrix, W::Matrix{Float64},
+                          ℓs::Vector{Float64}, σ2s::Vector{Float64},
+                          dist_norm::Float64)
+    N = size(Xo, 1)
+    D = size(W, 1)
+    Q = size(W, 2)
+
+    dists = _pairwise_distances(Xo, Xo) ./ dist_norm
+
+    K = zeros(D * N, D * N)
+    for q in 1:Q
+        Bq = W[:, q] * W[:, q]'   # D × D
+        for j in 1:N, i in 1:N
+            kval = _matern32_kernel(dists[i, j], ℓs[q], σ2s[q])
+            for e in 1:D, d in 1:D
+                K[(i-1)*D + d, (j-1)*D + e] += Bq[d, e] * kval
+            end
+        end
+    end
+    K
 end
 
 """
@@ -210,96 +245,61 @@ function setup_baseline_po(cfg::ExperimentConfig, setup_data, mask::BitMatrix)
     σy_copy = copy(setup_data.σy)
     R_diag = fill(cfg.R_diag_init, cfg.D)
 
+    K_prior_full = _lmc_full_kernel(setup_data.Xo, W_copy, copy(cfg.ℓs), copy(cfg.σ2s),
+                                    setup_data.dist_norm)
+
     BaselinePOState(W_copy, copy(cfg.ℓs), copy(cfg.σ2s), R_diag,
                     setup_data.dist_norm, copy(setup_data.Xo),
-                    mask, Y_copy, μy_copy, σy_copy)
+                    mask, Y_copy, μy_copy, σy_copy, K_prior_full)
 end
 
 """
     _lmc_predict_po(bl_state::BaselinePOState)
 
-Predict at all N points using a kernel-matrix GP that handles partial observations.
+Predict at all N points using the cov-restructuring kernel-matrix GP baseline.
 
-Builds an M×M kernel matrix where M = number of observed (point, output) pairs.
-Each entry: K[a,b] = Σ_q W[d_a,q]*W[d_b,q]*k_q(x_ia, x_jb) + R[d_a]*δ(ia==jb, d_a==d_b)
+Rather than rebuilding a kernel from scratch, this restructures the precomputed
+full LMC kernel `bl_state.K_prior_full` (D·N × D·N, noise-free): each step it
+slices out the M×M sub-block over the currently-observed (point, output) pairs,
+adds per-output noise, factorizes, and predicts. This is the per-step cost the
+paper compares against state-space message passing.
 """
 function _lmc_predict_po(bl_state::BaselinePOState)
     N = size(bl_state.Xo, 1)
     D = size(bl_state.W, 1)
-    Q = size(bl_state.W, 2)
+    Kf = bl_state.K_prior_full
 
-    observed_pts = findall(!ismissing, bl_state.Y)
-    n_obs = length(observed_pts)
-
-    # Build list of (point_index, output_dim) pairs that are observed
-    obs_pairs = Tuple{Int, Int}[]
-    for k in observed_pts
+    # Restructure: flat indices (point-major) of the observed scalar entries
+    obs_idx = Int[]
+    obs_dim = Int[]
+    for k in findall(!ismissing, bl_state.Y)
         for d in 1:D
             if bl_state.mask[k, d]
-                push!(obs_pairs, (k, d))
+                push!(obs_idx, (k - 1) * D + d)
+                push!(obs_dim, d)
             end
         end
     end
-    M = length(obs_pairs)
+    # Observed sub-block + per-output noise on the diagonal
+    K_obs = Kf[obs_idx, obs_idx] + Diagonal([bl_state.R_diag[d] for d in obs_dim])
+    L = cholesky(Symmetric(K_obs) + 1e-8I)
 
-    # Pairwise distances (normalized)
-    dists_full = _pairwise_distances(bl_state.Xo, bl_state.Xo) ./ bl_state.dist_norm
-
-    # Build M×M kernel matrix
-    K = zeros(M, M)
-    for b in 1:M, a in 1:M
-        ia, da = obs_pairs[a]
-        ib, db = obs_pairs[b]
-        kval = 0.0
-        for q in 1:Q
-            kval += bl_state.W[da, q] * bl_state.W[db, q] *
-                    _matern32_kernel(dists_full[ia, ib], bl_state.ℓs[q], bl_state.σ2s[q])
-        end
-        if ia == ib && da == db
-            kval += bl_state.R_diag[da]
-        end
-        K[a, b] = kval
-    end
-
-    K_jit = Symmetric(K) + 1e-8I
-    L = cholesky(K_jit)
-
-    # Observation vector (matching obs_pairs order)
-    y_obs = zeros(M)
-    for (idx, (k, d)) in enumerate(obs_pairs)
-        y_obs[idx] = bl_state.Y[k][d]
-    end
+    # Observation vector in obs_idx order
+    y_obs = [bl_state.Y[(idx - 1) ÷ D + 1][obs_dim[a]] for (a, idx) in enumerate(obs_idx)]
     α = L \ y_obs
 
-    # Prior self-variance
-    prior_var = _lmc_self_variance(bl_state.W, bl_state.σ2s)
+    # Vectorized prediction at all (point, output) entries
+    cross = Kf[:, obs_idx]              # (D·N) × M, noise-free cross-covariance
+    μ_flat = cross * α
+    V = L.L \ cross'                    # M × (D·N)
+    var_flat = diag(Kf) .- vec(sum(abs2, V; dims=1))
 
-    # Predict at each candidate point
     μ_pred = Vector{Vector{Float64}}(undef, N)
     σ_pred = Vector{Vector{Float64}}(undef, N)
-
     for i in 1:N
-        μ_d = zeros(D)
-        var_d = copy(prior_var)
-
-        for d in 1:D
-            # Cross-covariance between (i, d) and all observed pairs
-            kx = zeros(M)
-            for (idx, (k, dk)) in enumerate(obs_pairs)
-                for q in 1:Q
-                    kx[idx] += bl_state.W[d, q] * bl_state.W[dk, q] *
-                               _matern32_kernel(dists_full[i, k], bl_state.ℓs[q], bl_state.σ2s[q])
-                end
-            end
-
-            μ_d[d] = dot(kx, α)
-            v = L.L \ kx
-            var_d[d] -= dot(v, v)
-            var_d[d] = max(var_d[d], 1e-10)
-        end
-
-        μ_pred[i] = μ_d
-        σ_pred[i] = sqrt.(var_d)
+        rng = (i - 1) * D + 1 : i * D
+        μ_pred[i] = μ_flat[rng]
+        σ_pred[i] = sqrt.(max.(var_flat[rng], 1e-10))
     end
 
     (; μ_pred, σ_pred)
@@ -393,177 +393,6 @@ function run_bo_baseline_po!(cfg::ExperimentConfig, eval_fn; bl_state::BaselineP
 
     result = BOResult(best.index, best.value, best.y, observed, n_completed, R_learned,
                       best_value_history, n_observed_history, R_diag_history,
-                      step_times, "kernel-matrix-po")
+                      step_times, "kernel-matrix-po-restructure")
     (; result, frames)
-end
-
-# ─── Comparison runner ──────────────────────────────────────────────────────
-
-"""
-    run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds, output_dir) -> results
-
-Run 4-way comparison: SS-full, SS-PO, KM-full, KM-PO across multiple seeds.
-
-Demonstrates that the FFG/SS-GP handles partial observations naturally while
-the kernel-matrix baseline requires restructuring its covariance matrix.
-"""
-function run_po_comparison(cfg_template::ExperimentConfig, eval_fn; seeds=0:4, output_dir="data/partial_obs")
-    mkpath(output_dir)
-    all_results = Dict{String, Any}[]
-
-    # Build partial-obs config
-    cfg_po = ExperimentConfig(;
-        N=cfg_template.N, d=cfg_template.d, Q=cfg_template.Q, D=cfg_template.D,
-        ℓs=cfg_template.ℓs, σ2s=cfg_template.σ2s, β=cfg_template.β, s=cfg_template.s,
-        n_seed=cfg_template.n_seed, steps=cfg_template.steps,
-        tune_every=cfg_template.tune_every, R_diag_init=cfg_template.R_diag_init,
-        animate=false, log_every=cfg_template.log_every, seed=0,
-        obs_pattern=:sensor_groups, obs_frac=cfg_template.obs_frac
-    )
-
-    for seed in seeds
-        @info "=== Partial-obs comparison seed=$seed ==="
-        cfg_full = ExperimentConfig(;
-            N=cfg_template.N, d=cfg_template.d, Q=cfg_template.Q, D=cfg_template.D,
-            ℓs=cfg_template.ℓs, σ2s=cfg_template.σ2s, β=cfg_template.β, s=cfg_template.s,
-            n_seed=cfg_template.n_seed, steps=cfg_template.steps,
-            tune_every=cfg_template.tune_every, R_diag_init=cfg_template.R_diag_init,
-            animate=false, log_every=cfg_template.log_every, seed=seed,
-            obs_pattern=:full
-        )
-        cfg_partial = ExperimentConfig(;
-            N=cfg_po.N, d=cfg_po.d, Q=cfg_po.Q, D=cfg_po.D,
-            ℓs=cfg_po.ℓs, σ2s=cfg_po.σ2s, β=cfg_po.β, s=cfg_po.s,
-            n_seed=cfg_po.n_seed, steps=cfg_po.steps,
-            tune_every=cfg_po.tune_every, R_diag_init=cfg_po.R_diag_init,
-            animate=false, log_every=cfg_po.log_every, seed=seed,
-            obs_pattern=:sensor_groups
-        )
-
-        # ── SS-GP full observations ──
-        @info "Running SS-GP full (seed=$seed)"
-        setup_data = setup_experiment(cfg_full, eval_fn)
-        po_full = setup_po(cfg_full, setup_data)
-        out_ss_full = run_bo_po!(cfg_full, eval_fn;
-            po_state=po_full, Xo=setup_data.Xo, Δ=setup_data.Δ, Ytrue=setup_data.Ytrue)
-
-        # ── SS-GP partial observations ──
-        @info "Running SS-GP partial (seed=$seed)"
-        setup_data2 = setup_experiment(cfg_partial, eval_fn)
-        po_partial = setup_po(cfg_partial, setup_data2)
-        out_ss_po = run_bo_po!(cfg_partial, eval_fn;
-            po_state=po_partial, Xo=setup_data2.Xo, Δ=setup_data2.Δ, Ytrue=setup_data2.Ytrue)
-
-        # ── KM-GP full observations ──
-        @info "Running KM-GP full (seed=$seed)"
-        setup_data3 = setup_experiment(cfg_full, eval_fn)
-        mask_full = _generate_obs_mask(cfg_full, cfg_full.N, MersenneTwister(seed + 1000))
-        bl_full = setup_baseline_po(cfg_full, setup_data3, mask_full)
-        out_km_full = run_bo_baseline_po!(cfg_full, eval_fn;
-            bl_state=bl_full, Ytrue=setup_data3.Ytrue)
-
-        # ── KM-GP partial observations ──
-        @info "Running KM-GP partial (seed=$seed)"
-        setup_data4 = setup_experiment(cfg_partial, eval_fn)
-        mask_partial = _generate_obs_mask(cfg_partial, cfg_partial.N, MersenneTwister(seed + 1000))
-        bl_partial = setup_baseline_po(cfg_partial, setup_data4, mask_partial)
-        out_km_po = run_bo_baseline_po!(cfg_partial, eval_fn;
-            bl_state=bl_partial, Ytrue=setup_data4.Ytrue)
-
-        push!(all_results, Dict(
-            "seed" => seed,
-            "ss_full" => Dict(
-                "best_value_history" => out_ss_full.result.best_value_history,
-                "step_times"         => out_ss_full.result.step_times,
-                "best_value"         => out_ss_full.result.best_value,
-                "n_iterations"       => out_ss_full.result.n_iterations,
-                "total_time"         => sum(out_ss_full.result.step_times),
-            ),
-            "ss_po" => Dict(
-                "best_value_history" => out_ss_po.result.best_value_history,
-                "step_times"         => out_ss_po.result.step_times,
-                "best_value"         => out_ss_po.result.best_value,
-                "n_iterations"       => out_ss_po.result.n_iterations,
-                "total_time"         => sum(out_ss_po.result.step_times),
-            ),
-            "km_full" => Dict(
-                "best_value_history" => out_km_full.result.best_value_history,
-                "step_times"         => out_km_full.result.step_times,
-                "best_value"         => out_km_full.result.best_value,
-                "n_iterations"       => out_km_full.result.n_iterations,
-                "total_time"         => sum(out_km_full.result.step_times),
-            ),
-            "km_po" => Dict(
-                "best_value_history" => out_km_po.result.best_value_history,
-                "step_times"         => out_km_po.result.step_times,
-                "best_value"         => out_km_po.result.best_value,
-                "n_iterations"       => out_km_po.result.n_iterations,
-                "total_time"         => sum(out_km_po.result.step_times),
-            ),
-        ))
-    end
-
-    # Save JSON
-    json_path = joinpath(output_dir, "comparison.json")
-    open(json_path, "w") do io
-        JSON.print(io, all_results, 2)
-    end
-    @info "Saved partial-obs comparison to $json_path"
-
-    _plot_po_comparison(all_results, output_dir)
-
-    all_results
-end
-
-"""
-    _plot_po_comparison(results, output_dir)
-
-Generate convergence and timing comparison plots for the 4-way partial-obs experiment.
-"""
-function _plot_po_comparison(results, output_dir)
-    methods = ["ss_full", "ss_po", "km_full", "km_po"]
-    labels = ["SS-GP (full)", "SS-GP (partial)", "KM-GP (full)", "KM-GP (partial)"]
-    colors = [:blue, :cyan, :red, :orange]
-
-    max_steps = maximum(r -> maximum(length(r[m]["best_value_history"]) for m in methods), results)
-
-    function _pad(v, n)
-        length(v) >= n && return v[1:n]
-        vcat(v, fill(NaN, n - length(v)))
-    end
-
-    _nanmean(x) = mean(filter(!isnan, x))
-    _nanstd(x)  = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
-    _nanmedian(x) = (v = filter(!isnan, x); isempty(v) ? NaN : median(v))
-
-    steps = 1:max_steps
-
-    linestyles = [:solid, :dash, :solid, :dash]
-    theme_kw = publication_theme_kwargs()
-
-    # Plot 1: Convergence
-    save_plot(joinpath(output_dir, "convergence")) do
-        p = plot(; xlabel="BO Step", ylabel="Best Scalarized Value",
-                 legend=:bottomright, theme_kw...)
-        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
-            histories = hcat([_pad(r[m]["best_value_history"], max_steps) for r in results]...)
-            m_mean = [_nanmean(histories[i, :]) for i in 1:max_steps]
-            m_std  = [_nanstd(histories[i, :])  for i in 1:max_steps]
-            plot!(p, steps, m_mean, ribbon=m_std, fillalpha=0.15, lw=2,
-                  label=lab, color=col, linestyle=ls)
-        end
-        p
-    end
-
-    # Plot 2: Timing per step
-    save_plot(joinpath(output_dir, "timing")) do
-        p = plot(; xlabel="BO Step", ylabel="Median Time per Step (s)", yscale=:log10,
-                 legend=:topright, theme_kw...)
-        for (m, lab, col, ls) in zip(methods, labels, colors, linestyles)
-            times = hcat([_pad(r[m]["step_times"], max_steps) for r in results]...)
-            t_med = [_nanmedian(times[i, :]) for i in 1:max_steps]
-            plot!(p, steps, t_med, lw=2, label=lab, color=col, linestyle=ls)
-        end
-        p
-    end
 end

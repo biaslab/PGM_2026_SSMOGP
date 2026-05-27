@@ -18,6 +18,7 @@ include("partial_obs.jl")
 include("sequential_design.jl")
 include("benchmarks.jl")
 include("dim_sweep.jl")
+include("ett.jl")
 
 export AbstractBOState, ExperimentConfig, BOResult
 export POState, BaselinePOState, BaselineState
@@ -32,7 +33,7 @@ export setup_experiment, save_results
 export setup_baseline, run_bo_baseline!
 export setup_po, run_bo_po!
 export setup_baseline_po, run_bo_baseline_po!
-export run_po_comparison
+export load_ett, run_ett_forecast, run_ett_sweeps
 export hartmann6, make_mo_hartmann, make_environmental, make_synthetic_1d, make_sensor_network
 export run_dim_sweep
 export SDResult

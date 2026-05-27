@@ -17,7 +17,7 @@ Project.toml              — Julia package definition + dependencies
 params.yaml               — Experiment hyperparameters (DVC-tracked)
 dvc.yaml                  — DVC pipeline definition (1 stage)
 experiments/
-  partial_obs.jl          — Partial observations — FFG modularity (d=6, D=4)
+  partial_obs.jl          — ETTh1 forecasting under feature dropout: SS-LMC (msg passing) vs KM-LMC (cov restructuring)
   dim_sweep.jl            — Input-dimension sweep on synthetic sensor network (SS vs KM vs Random)
 experiments.jl            — Legacy: ad-hoc eval_blackbox, single SS-GP run
 experiments_baseline.jl   — Legacy: baseline-only runner
@@ -33,9 +33,10 @@ src/
   visualization.jl        — plot_bo_step (3-panel BO visualization)
   bo.jl                   — setup_experiment, _current_best, save_results
   baseline.jl             — BaselineState, setup_baseline, run_bo_baseline! (LMC kernel-matrix GP)
-  partial_obs.jl          — POState, BaselinePOState, setup_po, run_bo_po!, partial-obs baseline, run_po_comparison
+  partial_obs.jl          — POState, BaselinePOState, setup_po, run_bo_po!, cov-restructuring KM-LMC partial-obs baseline
   dim_sweep.jl            — run_dim_sweep, random-acquisition baseline, dim-sweep plots
   benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model, sensor network)
+  ett.jl                  — ETTh1 forecasting under feature dropout: SS-LMC vs KM-LMC (cov restructuring)
 ```
 
 ## Code Map
@@ -91,10 +92,20 @@ src/
 - `_generate_obs_mask(cfg, N, rng)` — generates N × D observation mask (:full or :sensor_groups)
 - `setup_po(cfg, setup_data)` — creates POState from setup_experiment output
 - `run_bo_po!(cfg, eval_fn; po_state, Xo, Δ, Ytrue)` — BO loop with partial-observation SS-GP
-- `setup_baseline_po(cfg, setup_data, mask)` — creates BaselinePOState
-- `_lmc_predict_po(bl_state)` — kernel-matrix GP with variable-size covariance for partial obs
-- `run_bo_baseline_po!(cfg, eval_fn; bl_state, Ytrue)` — BO loop with partial-observation KM-GP
-- `run_po_comparison(cfg_template, eval_fn; seeds, output_dir)` — 4-way comparison: SS/KM × full/partial
+- `setup_baseline_po(cfg, setup_data, mask)` — creates BaselinePOState; precomputes `K_prior_full` (full noise-free D·N×D·N LMC kernel)
+- `_lmc_full_kernel(Xo, W, ℓs, σ2s, dist_norm)` — builds the full structured LMC kernel (point-major flat indexing)
+- `_lmc_predict_po(bl_state)` — KM-LMC prediction by **covariance restructuring**: slices the observed sub-block out of `K_prior_full`, factorizes, predicts
+- `run_bo_baseline_po!(cfg, eval_fn; bl_state, Ytrue)` — BO loop with partial-observation KM-GP (still used by dim_sweep/sequential_design)
+
+### ett.jl
+- `load_ett(path; n_rows)` — manual CSV loader for ETTh1 (drops `date`, returns n×7 matrix; no CSV/DataFrames dep)
+- `_dropout_mask(N_train, N_test, D, p, rng)` — i.i.d. per-cell observation mask over the training half (test half held out)
+- `_ett_setup(data, N_train, N_test, p, seed, D, Q)` — shared time-grid/W/mask/standardization/Y/Y_flat/Ytrue
+- `forecast_ss(setup, …)` — SS-LMC forecast via `additive_gp_po` message passing → (mnll, rmse, time)
+- `forecast_km(setup, …)` — KM-LMC forecast via cov restructuring (full train kernel → observed sub-block → cross to test)
+- `_forecast_mnll` / `_test_rmse` — metrics over the explicit held-out forecast indices
+- `run_ett_forecast(data, N, p, seed; …)` — one train(first half)/forecast(second half) comparison
+- `run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, seeds, …)` — sweep window N and dropout p; saves comparison.json + time/MNLL/RMSE plots
 
 ### benchmarks.jl
 - `hartmann6(x)` — Standard Hartmann 6-dimensional function on [0,1]^6, global max ≈ 3.3224
@@ -109,8 +120,9 @@ src/
 - `_plot_dim_sweep(results, ds, output_dir)` — Per-d convergence + final-regret/time/chain-quality vs d
 
 ### experiments/partial_obs.jl
-- Partial observation on environmental monitoring benchmark (d=4, D=12, N=500, 5 seeds)
-- 4-way: SS-full, SS-PO, KM-full, KM-PO — demonstrates FFG modularity
+- ETTh1 forecasting under random per-feature dropout (D=7, Q=4, train first half / forecast second half)
+- 2-way: SS-LMC (message passing) vs KM-LMC (covariance restructuring), swept over window N and dropout p
+- Demonstrates SS-LMC matches KM-LMC accuracy (identical MNLL/RMSE) while being faster at large N (O(N) vs O((D·N)³))
 
 ### experiments/dim_sweep.jl
 - Input-dimension sweep on synthetic sensor network (d ∈ {2,4,8,16,32}, D=3, N=200, 5 seeds)
@@ -140,7 +152,7 @@ View metrics: `dvc metrics show`
 Configuration is in `params.yaml`. Changes to params or source code trigger re-runs via DVC.
 
 ### Stages
-1. **partial_obs** — Partial observation 4-way comparison on environmental benchmark (d=4, D=12, N=500, 5 seeds). Outputs: `data/partial_obs/`
+1. **partial_obs** — ETTh1 forecasting under feature dropout; SS-LMC vs KM-LMC (cov restructuring) swept over window N and dropout p. Outputs: `data/partial_obs/`
 2. **dim_sweep** — Input-dimension sweep on synthetic sensor network (d ∈ {2,4,8,16,32}, D=3, N=200, 5 seeds). Outputs: `data/dim_sweep/`
 
 ## Known Issues / Improvement Opportunities

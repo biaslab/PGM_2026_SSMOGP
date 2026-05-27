@@ -4,16 +4,21 @@ stages:
     deps:
       - experiments/partial_obs.jl
       - src
+      - data/ett/ETTh1.csv
     params:
       - partial_obs
     outs:
       - data/partial_obs/comparison.json
-      - data/partial_obs/convergence.png
-      - data/partial_obs/convergence.tikz
-      - data/partial_obs/timing.png
-      - data/partial_obs/timing.tikz
-      - data/partial_obs/timelimit.png
-      - data/partial_obs/timelimit.tikz
+      - data/partial_obs/time_vs_N.png
+      - data/partial_obs/mnll_vs_N.png
+      - data/partial_obs/mnll_vs_N.tikz
+      - data/partial_obs/rmse_vs_N.png
+      - data/partial_obs/rmse_vs_N.tikz
+      - data/partial_obs/time_vs_p.png
+      - data/partial_obs/mnll_vs_p.png
+      - data/partial_obs/mnll_vs_p.tikz
+      - data/partial_obs/rmse_vs_p.png
+      - data/partial_obs/rmse_vs_p.tikz
     metrics:
       - data/partial_obs/metrics.json:
           cache: false

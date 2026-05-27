@@ -2,25 +2,22 @@
 # Run experiments via: dvc repro
 
 partial_obs:
-  # Partial observation on environmental monitoring benchmark (d=4, D=12)
-  # Bliznyuk et al. (2008), Maddox et al. (NeurIPS 2021)
-  # Goal: Demonstrate FFG modularity — SS-GP handles missing per-output data
-  # naturally via message passing; KM-GP requires covariance restructuring
-  # D=12 makes KM-GP's O((D*n_obs)^3) cost visible at moderate N
-  N: 500
-  d: 4
-  D: 12
-  Q: 6
-  n_spatial: 3
-  n_temporal: 4
-  steps: 150
-  n_seed: 10
-  beta: 2.0
+  # ETTh1 forecasting under random per-feature dropout.
+  # Train a multi-output state-space LMC GP on the first half of the series
+  # (with i.i.d. feature dropout) and forecast the held-out second half.
+  # Compares SS-LMC (message passing) vs KM-LMC (covariance restructuring) on
+  # forecast MNLL/RMSE and fit+forecast time, swept over window size N and dropout p.
+  data_path: data/ett/ETTh1.csv
+  D: 7                          # all numeric ETT columns as outputs
+  Q: 4                          # latent LMC GPs
   R_diag_init: 0.2
-  log_every: 10
-  seeds: [0,1,2,3,4]
-  ls: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
-  sigma2s: [3.0, 3.0, 2.0, 2.0, 1.0, 1.0]
+  Ns: [500, 1000, 2000, 4000]   # training-window sizes (split 50/50 train/forecast)
+  p_fixed: 0.3                  # dropout used during the N sweep
+  ps: [0.1, 0.3, 0.5, 0.7]      # dropout levels
+  N_fixed: 1000                 # window used during the p sweep
+  seeds: [0, 1, 2]              # dropout realizations
+  ls: [4.0, 12.0, 24.0, 48.0]   # length-scales in timestep (hour) units
+  sigma2s: [1.0, 1.0, 1.0, 1.0]
 
 quadrature:
   # Bayesian Quadrature on 1D synthetic benchmark (sinusoidal latents)
