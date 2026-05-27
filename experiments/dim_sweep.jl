@@ -1,9 +1,9 @@
 # Input-dimension sweep on a synthetic sensor-network benchmark.
 #
 # Each input coordinate corresponds to one weather station. As the number of
-# stations (d) grows, the NN-chain ordering used by SS-GP becomes a weaker
-# heuristic — this experiment quantifies the resulting BO regret gap against
-# a kernel-matrix GP (no chain ordering) and a random-acquisition baseline.
+# stations (d) grows, the NN-chain ordering used by SS-LMC becomes a weaker
+# heuristic — this experiment quantifies the resulting held-out RMSE/MNLL gap
+# against the exact kernel-matrix LMC (KM-LMC), which uses no chain ordering.
 #
 # Run via: julia --project=. experiments/dim_sweep.jl
 # Or via:  dvc repro dim_sweep
@@ -43,24 +43,28 @@ print_config(cfg_template)
 
 output_dir = joinpath(@__DIR__, "..", "data", "dim_sweep")
 
+train_frac = Float64(get(p, "train_frac", 0.5))
+
 eval_fn_factory = d -> make_sensor_network(; d=d, D=p["D"])
 results = run_dim_sweep(cfg_template, eval_fn_factory;
-                       ds=ds, seeds=seeds, output_dir=output_dir)
+                       ds=ds, seeds=seeds, train_frac=train_frac,
+                       output_dir=output_dir)
 
-# DVC metrics: per-d aggregates per method
+# DVC metrics: per-d held-out accuracy aggregates per method
+_nanmean(x) = (v = filter(!isnan, x); isempty(v) ? NaN : mean(v))
 metrics = Dict{String, Any}()
 for d in ds
     runs = filter(r -> r["d"] == d, results)
     key  = "d=$d"
     metrics[key] = Dict(
-        "ss_best_mean"     => mean([r["ss"]["best_value"]      for r in runs]),
-        "km_best_mean"     => mean([r["km"]["best_value"]      for r in runs]),
-        "random_best_mean" => mean([r["random"]["best_value"]  for r in runs]),
-        "ss_time_mean"     => mean([r["ss"]["total_time"]      for r in runs]),
-        "km_time_mean"     => mean([r["km"]["total_time"]      for r in runs]),
-        "random_time_mean" => mean([r["random"]["total_time"]  for r in runs]),
-        "chain_mean_delta" => mean([r["chain"]["mean_delta"]   for r in runs]),
-        "chain_max_delta"  => mean([r["chain"]["max_delta"]    for r in runs]),
+        "ss_rmse_mean"     => _nanmean([r["ss"]["rmse"] for r in runs]),
+        "km_rmse_mean"     => _nanmean([r["km"]["rmse"] for r in runs]),
+        "ss_mnll_mean"     => _nanmean([r["ss"]["mnll"] for r in runs]),
+        "km_mnll_mean"     => _nanmean([r["km"]["mnll"] for r in runs]),
+        "ss_time_mean"     => _nanmean([r["ss"]["time"] for r in runs]),
+        "km_time_mean"     => _nanmean([r["km"]["time"] for r in runs]),
+        "chain_mean_delta" => _nanmean([r["chain"]["mean_delta"] for r in runs]),
+        "chain_max_delta"  => _nanmean([r["chain"]["max_delta"]  for r in runs]),
     )
 end
 
