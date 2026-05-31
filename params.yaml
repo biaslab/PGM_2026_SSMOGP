@@ -2,22 +2,29 @@
 # Run experiments via: dvc repro
 
 partial_obs:
-  # ETTh1 forecasting under random per-feature dropout.
-  # Train a multi-output state-space LMC GP on the first half of the series
-  # (with i.i.d. feature dropout) and forecast the held-out second half.
-  # Compares SS-LMC (message passing) vs KM-LMC (covariance restructuring) on
-  # forecast MNLL/RMSE and fit+forecast time, swept over window size N and dropout p.
+  # ETTh multi-dim-input regression under random per-feature dropout.
+  # Splits the 7 ETTh columns into 3D inputs (useful loads) and 4D outputs
+  # (useless loads + OT). First N rows are training candidates (with i.i.d.
+  # per-cell dropout on outputs); next N rows are the fully held-out test set.
+  # NN-chain orders the inputs jointly so SS-LMC can exploit O(N) message
+  # passing on 3D inputs. Compares SS-LMC (msg passing) vs KM-LMC (cov
+  # restructuring) vs SVGP-LMC (inducing pts) on forecast MNLL/RMSE and
+  # fit+forecast time, swept over window size C (=N) and dropout p.
   data_path: data/ett/ETTh1.csv
-  D: 7                          # all numeric ETT columns as outputs
-  Q: 4                          # latent LMC GPs
+  input_cols: [1, 3, 5]         # HUFL, MUFL, LUFL (3D input)
+  output_cols: [2, 4, 6, 7]     # HULL, MULL, LULL, OT (4D output)
+  D: 4                          # length(output_cols)
+  Q: 3                          # latent LMC GPs
   R_diag_init: 0.2
-  Ns: [500, 1000, 2000, 4000]   # training-window sizes (split 50/50 train/forecast)
+  Ns: [500, 1000, 2000, 4000]   # training-window sizes (2·N rows total used per cell)
   p_fixed: 0.3                  # dropout used during the N sweep
   ps: [0.1, 0.3, 0.5, 0.7]      # dropout levels
-  N_fixed: 1000                 # window used during the p sweep
-  seeds: [0, 1, 2]              # dropout realizations
-  ls: [4.0, 12.0, 24.0, 48.0]   # length-scales in timestep (hour) units
-  sigma2s: [1.0, 1.0, 1.0, 1.0]
+  N_fixed: 1000                 # low-C window for the p sweep
+  N_fixed_big: 4000             # high-C window for the additional p sweep
+  seeds: [0, 1, 2]              # dropout / NN-chain realizations
+  ls: [2.0, 5.0, 10.0]          # length-scales in normalized chain-distance units
+  sigma2s: [1.0, 1.0, 1.0]
+  M: 64                         # SVGP-LMC inducing points (per latent, shared across Q)
 
 quadrature:
   # Bayesian Quadrature on 1D synthetic benchmark (sinusoidal latents)
@@ -44,7 +51,7 @@ dim_sweep:
   ds: [2, 4, 8, 16, 32]
   D: 3
   Q: 2
-  N: 200
+  N: 2000
   train_frac: 0.5
   steps: 1
   n_seed: 5
@@ -54,4 +61,5 @@ dim_sweep:
   seeds: [0, 1, 2, 3, 4]
   ls: [1.0, 2.0]
   sigma2s: [2.0, 1.0]
+  M_svgp: 64                    # SVGP-LMC inducing points (per latent, shared across Q)
 

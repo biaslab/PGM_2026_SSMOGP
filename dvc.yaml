@@ -19,6 +19,11 @@ stages:
       - data/partial_obs/mnll_vs_p.tikz
       - data/partial_obs/rmse_vs_p.png
       - data/partial_obs/rmse_vs_p.tikz
+      - data/partial_obs/time_vs_p_at_Cbig.png
+      - data/partial_obs/mnll_vs_p_at_Cbig.png
+      - data/partial_obs/mnll_vs_p_at_Cbig.tikz
+      - data/partial_obs/rmse_vs_p_at_Cbig.png
+      - data/partial_obs/rmse_vs_p_at_Cbig.tikz
     metrics:
       - data/partial_obs/metrics.json:
           cache: false
@@ -53,6 +58,8 @@ stages:
       - data/dim_sweep/rmse_vs_d.tikz
       - data/dim_sweep/mnll_vs_d.png
       - data/dim_sweep/mnll_vs_d.tikz
+      - data/dim_sweep/time_vs_d.png
+      - data/dim_sweep/time_vs_d.tikz
       - data/dim_sweep/chain_quality_vs_d.png
       - data/dim_sweep/chain_quality_vs_d.tikz
     metrics:

@@ -48,6 +48,7 @@ train_frac = Float64(get(p, "train_frac", 0.5))
 eval_fn_factory = d -> make_sensor_network(; d=d, D=p["D"])
 results = run_dim_sweep(cfg_template, eval_fn_factory;
                        ds=ds, seeds=seeds, train_frac=train_frac,
+                       M_svgp=Int(get(p, "M_svgp", 64)),
                        output_dir=output_dir)
 
 # DVC metrics: per-d held-out accuracy aggregates per method
@@ -57,12 +58,15 @@ for d in ds
     runs = filter(r -> r["d"] == d, results)
     key  = "d=$d"
     metrics[key] = Dict(
-        "ss_rmse_mean"     => _nanmean([r["ss"]["rmse"] for r in runs]),
-        "km_rmse_mean"     => _nanmean([r["km"]["rmse"] for r in runs]),
-        "ss_mnll_mean"     => _nanmean([r["ss"]["mnll"] for r in runs]),
-        "km_mnll_mean"     => _nanmean([r["km"]["mnll"] for r in runs]),
-        "ss_time_mean"     => _nanmean([r["ss"]["time"] for r in runs]),
-        "km_time_mean"     => _nanmean([r["km"]["time"] for r in runs]),
+        "ss_rmse_mean"     => _nanmean([r["ss"]["rmse"]   for r in runs]),
+        "km_rmse_mean"     => _nanmean([r["km"]["rmse"]   for r in runs]),
+        "svgp_rmse_mean"   => _nanmean([r["svgp"]["rmse"] for r in runs]),
+        "ss_mnll_mean"     => _nanmean([r["ss"]["mnll"]   for r in runs]),
+        "km_mnll_mean"     => _nanmean([r["km"]["mnll"]   for r in runs]),
+        "svgp_mnll_mean"   => _nanmean([r["svgp"]["mnll"] for r in runs]),
+        "ss_time_mean"     => _nanmean([r["ss"]["time"]   for r in runs]),
+        "km_time_mean"     => _nanmean([r["km"]["time"]   for r in runs]),
+        "svgp_time_mean"   => _nanmean([r["svgp"]["time"] for r in runs]),
         "chain_mean_delta" => _nanmean([r["chain"]["mean_delta"] for r in runs]),
         "chain_max_delta"  => _nanmean([r["chain"]["max_delta"]  for r in runs]),
     )
