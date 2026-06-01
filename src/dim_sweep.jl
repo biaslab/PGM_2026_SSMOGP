@@ -275,12 +275,16 @@ function _plot_dim_sweep(results, ds, output_dir)
     _nanmean(x)   = (v = filter(!isnan, x); isempty(v) ? NaN : mean(v))
     _nanstd(x)    = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
 
-    theme_kw = publication_theme_kwargs()
+    # Match the ETT sweep figures' export style (src/ett.jl `_plot_ett_sweep`):
+    # a plain ~560x380 canvas with default fonts and lw=2, NOT the tiny
+    # single-column TuePlots theme. Both figure sets are `\resizebox`d to the
+    # same width in the paper, so they must share the same source canvas/fonts.
+    plot_kw = (; size=(560, 380), left_margin=8Plots.mm, bottom_margin=6Plots.mm)
 
     function _metric_vs_d(metric, ylabel, fname; legendpos=:topleft, yscale=:identity)
         save_plot(joinpath(output_dir, fname)) do
-            p = plot(; xlabel="Input dimension d", ylabel=ylabel,
-                     legend=legendpos, xscale=:log2, yscale=yscale, theme_kw...)
+            p = plot(; xlabel="Input dimension M", ylabel=ylabel,
+                     legend=legendpos, xscale=:log2, yscale=yscale, plot_kw...)
             for (m, lab, col) in zip(methods, labels, colors)
                 means = Float64[]; stds = Float64[]
                 for d in ds
@@ -305,7 +309,7 @@ function _plot_dim_sweep(results, ds, output_dir)
 
     # Chain quality vs d
     save_plot(joinpath(output_dir, "chain_quality_vs_d")) do
-        p = plot(; xlabel="Input dimension d", ylabel="Chain Δ (consecutive distance)",
+        p = plot(; xlabel="Input dimension M", ylabel="Chain Δ (consecutive distance)",
                  legend=:topleft, xscale=:log2, theme_kw...)
         mean_curve = Float64[]; mean_std = Float64[]
         max_curve  = Float64[]; max_std  = Float64[]
