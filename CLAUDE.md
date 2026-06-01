@@ -36,7 +36,8 @@ src/
   partial_obs.jl          — POState, BaselinePOState, setup_po, run_bo_po!, cov-restructuring KM-LMC partial-obs baseline
   dim_sweep.jl            — run_dim_sweep, random-acquisition baseline, dim-sweep plots
   benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model, sensor network)
-  ett.jl                  — ETTh multi-dim-input regression under feature dropout: SS-LMC vs KM-LMC vs SVGP-LMC
+  ett.jl                  — ETTh multi-dim-input regression under feature dropout: SS-LMC (RxInfer + raw Kalman) vs KM-LMC vs SVGP-LMC
+  ss_lmc_raw.jl           — Hand-coded Kalman filter + RTS smoother for the additive multi-output state-space LMC (no RxInfer)
 ```
 
 ## Code Map
@@ -101,6 +102,7 @@ src/
 - `load_ett(path; n_rows)` — manual CSV loader for ETTh1 (drops `date`, returns n×7 matrix; column order HUFL,HULL,MUFL,MULL,LUFL,LULL,OT)
 - `_ett_setup(data, N_train, N_test, p, seed, D, Q, input_cols, output_cols)` — slices ETTh into 3D inputs (useful loads) and 4D outputs (useless loads + OT), standardizes by training-half stats, NN-chain orders all 2N points jointly, applies per-cell dropout to training-half outputs only, returns `(Xo, Δ, dist_norm, W, mask, Y, Y_flat, Ytrue, test_idx_chain, …)`
 - `forecast_ss(setup, …)` — SS-LMC forecast via `additive_gp_po` message passing along the NN chain → (mnll, rmse, time)
+- `forecast_ss_raw(setup, …)` — SS-LMC forecast via the hand-coded Kalman filter + RTS smoother in `ss_lmc_raw.jl` (same SS blocks; no RxInfer)
 - `forecast_km(setup, …)` — KM-LMC forecast via cov restructuring on the full (D·N)² LMC kernel over chain-ordered inputs
 - `forecast_svgp(setup, …, M; Z_seed)` — SVGP-LMC forecast; K-means inducing points drawn from training chain positions only
 - `_forecast_mnll` / `_test_rmse` — metrics over the chain-position test indices `setup.test_idx_chain`
@@ -133,7 +135,11 @@ src/
 - `experiments_baseline.jl` — baseline-only runner
 - `experiments_comparison.jl` — multi-seed comparison with ad-hoc function
 
+### ss_lmc_raw.jl
+- `ss_lmc_filter_smooth(P, A, Q, H, τ, Y_flat, N, D)` — Kalman filter (sequential scalar updates with Joseph-form covariance) + RTS smoother for the additive multi-output state-space LMC. Returns per-chain-position posterior `(μ_pred, σ_pred)` on `H·f`. Same SS blocks as `additive_gp_po`; bypasses RxInfer.
+
 ## Key Design Decisions
+- **Two SS-LMC implementations** — `forecast_ss` calls RxInfer's `additive_gp_po` (automated message passing, user-facing); `forecast_ss_raw` runs a hand-coded Kalman filter + RTS smoother (`ss_lmc_filter_smooth`). The raw version is used for fair scalability comparison against KM-LMC and SVGP-LMC, and as a numerical diagnostic.
 - **State-space GP instead of kernel-matrix GP** — O(N) vs O(N³) scaling
 - **NN chain ordering** — heuristic to enable state-space GP on high-dim inputs
 - **Additive latent structure** — Q independent latent GPs mixed by W (LMC)

@@ -27,7 +27,7 @@ data_path = joinpath(@__DIR__, "..", p["data_path"])
 # Each cell consumes 2·N rows (train + held-out test). Load enough for the
 # largest cell in any sweep.
 max_N    = maximum(Int.(p["Ns"]))
-max_N    = max(max_N, Int(p["N_fixed"]), Int(p["N_fixed_big"]))
+max_N    = max(max_N, Int(p["N_fixed"]))
 max_rows = 2 * max_N
 data = load_ett(data_path; n_rows=max_rows)
 @info "Loaded ETT data" size=size(data) path=p["data_path"]
@@ -38,7 +38,6 @@ res = run_ett_sweeps(data;
     Ns          = Int.(p["Ns"]),
     ps          = Float64.(p["ps"]),
     N_fixed     = Int(p["N_fixed"]),
-    N_fixed_big = Int(p["N_fixed_big"]),
     p_fixed     = Float64(p["p_fixed"]),
     seeds       = Int.(p["seeds"]),
     D           = Int(p["D"]),
@@ -49,6 +48,7 @@ res = run_ett_sweeps(data;
     input_cols  = Int.(p["input_cols"]),
     output_cols = Int.(p["output_cols"]),
     M           = Int(get(p, "M", 64)),
+    km_max_N    = Int(get(p, "km_max_N", 4000)),
     output_dir  = output_dir,
 )
 
@@ -63,17 +63,17 @@ big = [r for r in res.sweep_N if r["N"] == maximum(Int.(p["Ns"]))]
 metrics = Dict(
     "n_seeds"             => length(p["seeds"]),
     "N_max"               => maximum(Int.(p["Ns"])),
-    "N_fixed_big"         => Int(p["N_fixed_big"]),
+    "km_max_N"            => Int(get(p, "km_max_N", 4000)),
     "M"                   => Int(get(p, "M", 64)),
-    "ss_mnll_at_Nmax"     => _mean(big, "ss",   "mnll"),
-    "km_mnll_at_Nmax"     => _mean(big, "km",   "mnll"),
-    "svgp_mnll_at_Nmax"   => _mean(big, "svgp", "mnll"),
-    "ss_rmse_at_Nmax"     => _mean(big, "ss",   "rmse"),
-    "km_rmse_at_Nmax"     => _mean(big, "km",   "rmse"),
-    "svgp_rmse_at_Nmax"   => _mean(big, "svgp", "rmse"),
-    "ss_time_at_Nmax"     => _mean(big, "ss",   "time"),
-    "km_time_at_Nmax"     => _mean(big, "km",   "time"),
-    "svgp_time_at_Nmax"   => _mean(big, "svgp", "time"),
+    "ss_raw_mnll_at_Nmax" => _mean(big, "ss_raw", "mnll"),
+    "km_mnll_at_Nmax"     => _mean(big, "km",     "mnll"),
+    "svgp_mnll_at_Nmax"   => _mean(big, "svgp",   "mnll"),
+    "ss_raw_rmse_at_Nmax" => _mean(big, "ss_raw", "rmse"),
+    "km_rmse_at_Nmax"     => _mean(big, "km",     "rmse"),
+    "svgp_rmse_at_Nmax"   => _mean(big, "svgp",   "rmse"),
+    "ss_raw_time_at_Nmax" => _mean(big, "ss_raw", "time"),
+    "km_time_at_Nmax"     => _mean(big, "km",     "time"),
+    "svgp_time_at_Nmax"   => _mean(big, "svgp",   "time"),
 )
 
 _safe(x) = (x isa AbstractFloat && !isfinite(x)) ? nothing : x

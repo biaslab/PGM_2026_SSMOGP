@@ -16,13 +16,13 @@ partial_obs:
   D: 4                          # length(output_cols)
   Q: 3                          # latent LMC GPs
   R_diag_init: 0.2
-  Ns: [500, 1000, 2000, 4000]   # training-window sizes (2·N rows total used per cell)
+  Ns: [500, 1000, 2000, 4000, 8000]   # training-window sizes (2·N rows used per cell; ETTh1 has 17420 rows max)
   p_fixed: 0.3                  # dropout used during the N sweep
   ps: [0.1, 0.3, 0.5, 0.7]      # dropout levels
-  N_fixed: 1000                 # low-C window for the p sweep
-  N_fixed_big: 4000             # high-C window for the additional p sweep
+  N_fixed: 2000                 # window for the p sweep
+  km_max_N: 4000                # skip KM-LMC above this N (the (D·2N)² kernel would need 32+ GB)
   seeds: [0, 1, 2]              # dropout / NN-chain realizations
-  ls: [2.0, 5.0, 10.0]          # length-scales in normalized chain-distance units
+  ls: [0.5, 1.0, 2.0]           # length-scales in normalized chain-distance units
   sigma2s: [1.0, 1.0, 1.0]
   M: 64                         # SVGP-LMC inducing points (per latent, shared across Q)
 

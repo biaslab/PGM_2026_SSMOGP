@@ -19,6 +19,7 @@ include("svgp.jl")
 include("sequential_design.jl")
 include("benchmarks.jl")
 include("dim_sweep.jl")
+include("ss_lmc_raw.jl")
 include("ett.jl")
 
 export AbstractBOState, ExperimentConfig, BOResult
@@ -36,6 +37,7 @@ export setup_po, run_bo_po!
 export setup_baseline_po, run_bo_baseline_po!
 export SVGPState, setup_svgp, svgp_ucb_acquisition, run_bo_svgp!, forecast_svgp
 export load_ett, run_ett_forecast, run_ett_sweeps
+export ss_lmc_filter_smooth
 export hartmann6, make_mo_hartmann, make_environmental, make_synthetic_1d, make_sensor_network
 export run_dim_sweep
 export SDResult

@@ -168,6 +168,35 @@ function forecast_ss(setup, D::Int, Q::Int,
 end
 
 """
+    forecast_ss_raw(setup, D, Q, ℓs, σ2s, R_diag_init) -> (; mnll, rmse, time)
+
+SS-LMC forecast via a hand-coded Kalman filter + RTS smoother
+(`ss_lmc_filter_smooth`, `src/ss_lmc_raw.jl`). Same SS blocks as `forecast_ss`,
+but without RxInfer in the loop — used for the fair scalability comparison and
+as a numerical diagnostic against the message-passing implementation.
+"""
+function forecast_ss_raw(setup, D::Int, Q::Int,
+                         ℓs::Vector{Float64}, σ2s::Vector{Float64},
+                         R_diag_init::Float64)
+    N = setup.N
+    blocks = additive_multioutput_blocks_from_Δ(setup.Δ; ℓs=ℓs, σ2s=σ2s, W=setup.W)
+    τ = fill(1.0 / R_diag_init, D)
+
+    local pred
+    t = @elapsed begin
+        pred = ss_lmc_filter_smooth(blocks.P, blocks.A, blocks.Q, blocks.H,
+                                    τ, setup.Y_flat, N, D)
+    end
+
+    μ_pred = [pred.μ_pred[i] .* setup.σy .+ setup.μy for i in 1:N]
+    σ_pred = [pred.σ_pred[i] .* setup.σy for i in 1:N]
+
+    mnll = _forecast_mnll(μ_pred, σ_pred, setup.Ytrue, setup.test_idx_chain, D)
+    rmse = _test_rmse(μ_pred, setup.Ytrue, setup.test_idx_chain, D)
+    (; mnll, rmse, time=t)
+end
+
+"""
     forecast_km(setup, D, Q, ℓs, σ2s, R_diag_init) -> (; mnll, rmse, time)
 
 KM-LMC forecast via covariance restructuring on the multi-dim input. Builds
@@ -283,47 +312,54 @@ function run_ett_forecast(data, N::Int, p::Float64, seed::Int;
                           D::Int, Q::Int, ℓs::Vector{Float64}, σ2s::Vector{Float64},
                           R_diag_init::Float64,
                           input_cols::Vector{Int}, output_cols::Vector{Int},
-                          M::Int=64)
+                          M::Int=64, km_max_N::Int=4000)
     setup = _ett_setup(data, N, N, p, seed, D, Q, input_cols, output_cols)
-    ss   = forecast_ss(setup, D, Q, ℓs, σ2s, R_diag_init)
-    km   = forecast_km(setup, D, Q, ℓs, σ2s, R_diag_init)
+    ss_raw = forecast_ss_raw(setup, D, Q, ℓs, σ2s, R_diag_init)
+    if N <= km_max_N
+        km = forecast_km(setup, D, Q, ℓs, σ2s, R_diag_init)
+    else
+        @info "Skipping KM-LMC at N=$N (km_max_N=$km_max_N): (D·2N)² kernel exceeds memory budget"
+        km = (mnll=NaN, rmse=NaN, time=NaN)
+    end
     svgp = forecast_svgp(setup, D, Q, ℓs, σ2s, R_diag_init, M; Z_seed=seed)
-    (; ss, km, svgp)
+    (; ss_raw, km, svgp)
 end
 
 # ─── Sweep runner ────────────────────────────────────────────────────────────
 
 """
-    run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, N_fixed_big, seeds, D, Q,
+    run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, seeds, D, Q,
                    ℓs, σ2s, R_diag_init, input_cols, output_cols, M=64,
-                   output_dir) -> (; sweep_N, sweep_p, sweep_p_big)
+                   km_max_N=4000, output_dir) -> (; sweep_N, sweep_p)
 
-Three sweeps comparing SS-LMC, KM-LMC, and SVGP-LMC under per-feature dropout
-on the multi-dim ETT inputs:
+Two sweeps comparing SS-LMC (raw Kalman), KM-LMC, and SVGP-LMC under
+per-feature dropout on the multi-dim ETT inputs:
 - N sweep over `Ns` at fixed `p_fixed`
 - p sweep over `ps` at fixed `N_fixed`
-- p sweep over `ps` at fixed `N_fixed_big`  (higher C; new)
 
-Each cell is averaged over `seeds`. Saves comparison JSON and time/MNLL/RMSE
-plots for each sweep.
+KM-LMC is skipped when `N > km_max_N` (its (D·2N)² kernel would exceed memory
+at large N). Each cell is averaged over `seeds`. Saves comparison JSON and
+time/MNLL/RMSE plots.
 """
-function run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, N_fixed_big, seeds,
+function run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, seeds,
                         D, Q, ℓs, σ2s, R_diag_init,
                         input_cols::Vector{Int}, output_cols::Vector{Int},
-                        M::Int=64, output_dir="data/partial_obs")
+                        M::Int=64, km_max_N::Int=4000,
+                        output_dir="data/partial_obs")
     mkpath(output_dir)
 
     # Warm up JIT so the first recorded cell isn't inflated by compilation.
     @info "Warming up (compilation)…"
     run_ett_forecast(data, min(200, first(Ns)), p_fixed, first(seeds);
                      D=D, Q=Q, ℓs=ℓs, σ2s=σ2s, R_diag_init=R_diag_init,
-                     input_cols=input_cols, output_cols=output_cols, M=M)
+                     input_cols=input_cols, output_cols=output_cols,
+                     M=M, km_max_N=km_max_N)
 
     _row(N, p, seed, r) = Dict(
-        "N"   => N, "p"   => p, "seed" => seed,
-        "ss"  => Dict("mnll"=>r.ss.mnll,  "rmse"=>r.ss.rmse,  "time"=>r.ss.time),
-        "km"  => Dict("mnll"=>r.km.mnll,  "rmse"=>r.km.rmse,  "time"=>r.km.time),
-        "svgp"=> Dict("mnll"=>r.svgp.mnll,"rmse"=>r.svgp.rmse,"time"=>r.svgp.time),
+        "N"     => N, "p"     => p, "seed" => seed,
+        "ss_raw"=> Dict("mnll"=>r.ss_raw.mnll,"rmse"=>r.ss_raw.rmse,"time"=>r.ss_raw.time),
+        "km"    => Dict("mnll"=>r.km.mnll,    "rmse"=>r.km.rmse,    "time"=>r.km.time),
+        "svgp"  => Dict("mnll"=>r.svgp.mnll,  "rmse"=>r.svgp.rmse,  "time"=>r.svgp.time),
     )
 
     sweep_N = Dict{String,Any}[]
@@ -331,7 +367,8 @@ function run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, N_fixed_big, seeds,
         @info "Sweep-N: N=$N p=$p_fixed seed=$seed"
         r = run_ett_forecast(data, N, p_fixed, seed;
                               D=D, Q=Q, ℓs=ℓs, σ2s=σ2s, R_diag_init=R_diag_init,
-                              input_cols=input_cols, output_cols=output_cols, M=M)
+                              input_cols=input_cols, output_cols=output_cols,
+                              M=M, km_max_N=km_max_N)
         push!(sweep_N, _row(N, p_fixed, seed, r))
     end
 
@@ -340,25 +377,16 @@ function run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, N_fixed_big, seeds,
         @info "Sweep-p: N=$N_fixed p=$p seed=$seed"
         r = run_ett_forecast(data, N_fixed, p, seed;
                               D=D, Q=Q, ℓs=ℓs, σ2s=σ2s, R_diag_init=R_diag_init,
-                              input_cols=input_cols, output_cols=output_cols, M=M)
+                              input_cols=input_cols, output_cols=output_cols,
+                              M=M, km_max_N=km_max_N)
         push!(sweep_p, _row(N_fixed, p, seed, r))
-    end
-
-    sweep_p_big = Dict{String,Any}[]
-    for p in ps, seed in seeds
-        @info "Sweep-p-big: N=$N_fixed_big p=$p seed=$seed"
-        r = run_ett_forecast(data, N_fixed_big, p, seed;
-                              D=D, Q=Q, ℓs=ℓs, σ2s=σ2s, R_diag_init=R_diag_init,
-                              input_cols=input_cols, output_cols=output_cols, M=M)
-        push!(sweep_p_big, _row(N_fixed_big, p, seed, r))
     end
 
     payload = Dict("sweep_N"=>sweep_N,
                    "sweep_p"=>sweep_p,
-                   "sweep_p_big"=>sweep_p_big,
                    "p_fixed"=>p_fixed,
                    "N_fixed"=>N_fixed,
-                   "N_fixed_big"=>N_fixed_big,
+                   "km_max_N"=>km_max_N,
                    "M"=>M)
     open(joinpath(output_dir, "comparison.json"), "w") do io
         JSON.print(io, _sanitize_json(payload), 2)
@@ -366,14 +394,13 @@ function run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, N_fixed_big, seeds,
     @info "Saved ETT forecast comparison to $(joinpath(output_dir, "comparison.json"))"
 
     try
-        _plot_ett_sweep(sweep_N,     "N", Ns, output_dir, p_fixed; suffix="")
-        _plot_ett_sweep(sweep_p,     "p", ps, output_dir, N_fixed; suffix="")
-        _plot_ett_sweep(sweep_p_big, "p", ps, output_dir, N_fixed_big; suffix="_at_Cbig")
+        _plot_ett_sweep(sweep_N, "N", Ns, output_dir, p_fixed; suffix="")
+        _plot_ett_sweep(sweep_p, "p", ps, output_dir, N_fixed; suffix="")
     catch e
         @warn "Plotting failed (results are saved in comparison.json)" exception=e
     end
 
-    (; sweep_N, sweep_p, sweep_p_big)
+    (; sweep_N, sweep_p)
 end
 
 """
@@ -390,9 +417,9 @@ function _plot_ett_sweep(rows, axis::String, xs, output_dir, fixed; suffix::Stri
     end
     xlab = axis == "N" ? "Window length C (p=$fixed)" : "Dropout p (C=$fixed)"
 
-    series = (("ss",   "SS-LMC (msg passing)",      :blue),
-              ("km",   "KM-LMC (cov restruct.)",    :red),
-              ("svgp", "SVGP-LMC (M inducing pts)", :green))
+    series = (("ss_raw", "SS-LMC (raw Kalman)",       :blue),
+              ("km",     "KM-LMC (cov restruct.)",    :red),
+              ("svgp",   "SVGP-LMC (M inducing pts)", :green))
 
     xv = Float64.(collect(xs))
     for (metric, ylab, logy) in (("time", "Fit+forecast time (s)", true),

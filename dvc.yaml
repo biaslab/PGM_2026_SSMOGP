@@ -19,11 +19,6 @@ stages:
       - data/partial_obs/mnll_vs_p.tikz
       - data/partial_obs/rmse_vs_p.png
       - data/partial_obs/rmse_vs_p.tikz
-      - data/partial_obs/time_vs_p_at_Cbig.png
-      - data/partial_obs/mnll_vs_p_at_Cbig.png
-      - data/partial_obs/mnll_vs_p_at_Cbig.tikz
-      - data/partial_obs/rmse_vs_p_at_Cbig.png
-      - data/partial_obs/rmse_vs_p_at_Cbig.tikz
     metrics:
       - data/partial_obs/metrics.json:
           cache: false
