@@ -53,6 +53,8 @@ stages:
       - data/dim_sweep/rmse_vs_d.tikz
       - data/dim_sweep/mnll_vs_d.png
       - data/dim_sweep/mnll_vs_d.tikz
+      - data/dim_sweep/time_vs_d.png
+      - data/dim_sweep/time_vs_d.tikz
       - data/dim_sweep/chain_quality_vs_d.png
       - data/dim_sweep/chain_quality_vs_d.tikz
     metrics:

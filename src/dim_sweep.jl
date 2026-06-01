@@ -109,9 +109,44 @@ Writes `comparison.json` and rendered figures to `output_dir`.
 function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                       ds::Vector{Int}=[2, 4, 8, 16, 32], seeds=0:4,
                       train_frac::Float64=0.5,
+                      M_svgp::Int=64,
                       output_dir::String="data/dim_sweep")
     mkpath(output_dir)
     all_results = Dict{String, Any}[]
+
+    # Warm up JIT (RxInfer compilation + first-call autodiff dispatch) so the
+    # first recorded (d, seed) cell isn't inflated by compile time. We discard
+    # the result; cost is one extra inference pass at the smallest d.
+    @info "Warming up (compilation)…"
+    let d = first(ds)
+        cfg = ExperimentConfig(;
+            N=cfg_template.N, d=d, Q=cfg_template.Q, D=cfg_template.D,
+            ℓs=cfg_template.ℓs, σ2s=cfg_template.σ2s,
+            β=cfg_template.β, s=cfg_template.s,
+            n_seed=cfg_template.n_seed, steps=cfg_template.steps,
+            tune_every=cfg_template.tune_every, R_diag_init=cfg_template.R_diag_init,
+            animate=false, log_every=cfg_template.log_every, seed=0,
+            obs_pattern=:full, obs_frac=1.0,
+        )
+        sd_warm = setup_experiment(cfg, eval_fn_factory(d))
+        split_warm = _train_test_split(sd_warm, cfg, train_frac, MersenneTwister(0))
+        try
+            po_warm = setup_po(cfg, split_warm.sd)
+            res_warm = infer(
+                model=additive_gp_po(
+                    P=po_warm.blocks.P, A=po_warm.blocks.A,
+                    Q=po_warm.blocks.Q, H=po_warm.blocks.H,
+                    τ=po_warm.τ, e_vecs=po_warm.e_vecs, N=cfg.N, D=cfg.D),
+                data=(Y=po_warm.Y_flat,),
+                options=(limit_stack_depth=1000,))
+            variance_acquisition(res_warm, po_warm, cfg, cfg.N)
+            mask_warm = _generate_obs_mask(cfg, cfg.N, MersenneTwister(1000))
+            baseline_po_variance_acquisition(setup_baseline_po(cfg, split_warm.sd, mask_warm), cfg)
+            _lmc_svgp_predict(setup_svgp(cfg, split_warm.sd; M=M_svgp, Z_seed=9999))
+        catch e
+            @warn "Warmup pass failed (continuing anyway)" exception=e
+        end
+    end
 
     for d in ds
         for seed in seeds
@@ -174,7 +209,26 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                 end
             end
 
-            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4)
+            # ── SVGP-LMC: closed-form variational posterior at M inducing points ──
+            # K-means inducing-point selection is part of the SVGP wall-clock budget.
+            @info "Running SVGP (d=$d, seed=$seed)"
+            svgp_rmse = NaN; svgp_mnll = NaN
+            svgp_time = @elapsed begin
+                try
+                    svgp_state = setup_svgp(cfg, sd; M=M_svgp, Z_seed=seed + 9999)
+                    pred = _lmc_svgp_predict(svgp_state)
+                    # Rescale to original output scale (matches SS-LMC / KM-LMC paths).
+                    μ_orig = [pred.μ_pred[i] .* sd.σy .+ sd.μy for i in 1:N]
+                    σ_orig = [pred.σ_pred[i] .* sd.σy           for i in 1:N]
+                    svgp_rmse = _compute_rmse_test(μ_orig, sd.Ytrue, test_idx, D)
+                    svgp_mnll = _compute_mnll_obs(μ_orig, σ_orig, sd.Ytrue,
+                                                  test_idx, sd.σy, cfg.R_diag_init, D)
+                catch e
+                    @warn "SVGP prediction failed (d=$d, seed=$seed)" exception=e
+                end
+            end
+
+            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) svgp_rmse=round(svgp_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4) svgp_mnll=round(svgp_mnll; digits=4)
 
             push!(all_results, Dict(
                 "d"     => d,
@@ -186,8 +240,9 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                     "min_delta"    => chain.min_delta,
                     "total_length" => chain.total_length,
                 ),
-                "ss" => Dict("rmse" => ss_rmse, "mnll" => ss_mnll, "time" => ss_time),
-                "km" => Dict("rmse" => km_rmse, "mnll" => km_mnll, "time" => km_time),
+                "ss"   => Dict("rmse" => ss_rmse,   "mnll" => ss_mnll,   "time" => ss_time),
+                "km"   => Dict("rmse" => km_rmse,   "mnll" => km_mnll,   "time" => km_time),
+                "svgp" => Dict("rmse" => svgp_rmse, "mnll" => svgp_mnll, "time" => svgp_time),
             ))
         end
     end
@@ -208,23 +263,24 @@ end
 """
     _plot_dim_sweep(results, ds, output_dir)
 
-Render the dim_sweep figures: held-out RMSE vs d, held-out MNLL vs d, and raw
-NN-chain quality vs d, each comparing SS-LMC against KM-LMC where applicable.
+Render the dim_sweep figures: held-out RMSE vs d, held-out MNLL vs d,
+fit+predict time vs d (log-y), and raw NN-chain quality vs d. Each plot
+overlays SS-LMC, KM-LMC, and SVGP-LMC where applicable.
 """
 function _plot_dim_sweep(results, ds, output_dir)
-    methods = ["ss", "km"]
-    labels  = ["SS-LMC", "KM-LMC"]
-    colors  = [:blue, :red]
+    methods = ["ss", "km", "svgp"]
+    labels  = ["SS-LMC", "KM-LMC", "SVGP-LMC"]
+    colors  = [:blue, :red, :green]
 
     _nanmean(x)   = (v = filter(!isnan, x); isempty(v) ? NaN : mean(v))
     _nanstd(x)    = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
 
     theme_kw = publication_theme_kwargs()
 
-    function _metric_vs_d(metric, ylabel, fname; legendpos=:topleft)
+    function _metric_vs_d(metric, ylabel, fname; legendpos=:topleft, yscale=:identity)
         save_plot(joinpath(output_dir, fname)) do
             p = plot(; xlabel="Input dimension d", ylabel=ylabel,
-                     legend=legendpos, xscale=:log2, theme_kw...)
+                     legend=legendpos, xscale=:log2, yscale=yscale, theme_kw...)
             for (m, lab, col) in zip(methods, labels, colors)
                 means = Float64[]; stds = Float64[]
                 for d in ds
@@ -233,15 +289,19 @@ function _plot_dim_sweep(results, ds, output_dir)
                     push!(means, _nanmean(vals))
                     push!(stds, _nanstd(vals))
                 end
-                plot!(p, ds, means, ribbon=stds, fillalpha=0.15, lw=2, marker=:circle,
-                      label=lab, color=col)
+                # On a log scale, a ribbon that crosses zero crashes the renderer;
+                # clip it to a positive floor before drawing.
+                ribbon_vals = yscale == :log10 ? min.(stds, means .* 0.99) : stds
+                plot!(p, ds, means, ribbon=ribbon_vals, fillalpha=0.15, lw=2,
+                      marker=:circle, label=lab, color=col)
             end
             p
         end
     end
 
-    _metric_vs_d("rmse", "Held-out RMSE", "rmse_vs_d")
-    _metric_vs_d("mnll", "Held-out MNLL", "mnll_vs_d")
+    _metric_vs_d("rmse", "Held-out RMSE",        "rmse_vs_d")
+    _metric_vs_d("mnll", "Held-out MNLL",        "mnll_vs_d")
+    _metric_vs_d("time", "Fit+predict time (s)", "time_vs_d"; yscale=:log10)
 
     # Chain quality vs d
     save_plot(joinpath(output_dir, "chain_quality_vs_d")) do
