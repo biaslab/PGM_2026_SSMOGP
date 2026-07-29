@@ -38,6 +38,9 @@ src/
   benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model, sensor network)
   ett.jl                  — ETTh multi-dim-input regression under feature dropout: SS-LMC (RxInfer + raw Kalman) vs KM-LMC vs SVGP-LMC
   ss_lmc_raw.jl           — Hand-coded Kalman filter + RTS smoother for the additive multi-output state-space LMC (no RxInfer)
+  vecchia.jl              — Vecchia/NNGP LMC baseline (maxmin ordering, m nearest-neighbour conditioning sets)
+test/
+  test_vecchia.jl         — Correctness tests for the Vecchia baseline
 ```
 
 ## Code Map

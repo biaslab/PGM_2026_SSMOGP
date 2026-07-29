@@ -46,7 +46,7 @@ dim_sweep:
   # Each input coordinate = one weather station; the function output is a
   # spatially weighted, saturating combination of per-station readings.
   # Goal: quantify NN-chain degradation with d via held-out posterior quality.
-  # Compares SS-LMC vs KM-LMC on held-out RMSE and MNLL.
+  # Compares SS-LMC vs KM-LMC vs SVGP-LMC vs Vecchia/NNGP-LMC on RMSE and MNLL.
   # train_frac of the N candidates are observed; the rest are held out for eval.
   ds: [2, 4, 8, 16, 32]
   D: 3
@@ -62,4 +62,9 @@ dim_sweep:
   ls: [1.0, 2.0]
   sigma2s: [2.0, 1.0]
   M_svgp: 64                    # SVGP-LMC inducing points (per latent, shared across Q)
+  # Vecchia/NNGP-LMC conditioning-set size, in *locations*. Each location
+  # carries D=3 outputs, so a set holds up to m·D = 60 scalar responses —
+  # deliberately comparable to the 64 SVGP inducing points, so the two
+  # scalable approximations get a matched information budget.
+  m_vecchia: 20
 

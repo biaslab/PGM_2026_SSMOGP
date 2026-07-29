@@ -6,7 +6,19 @@
 # NN-chain ordering used by SS-LMC becomes a weaker heuristic, so this sweep
 # probes how gracefully the chain approximation degrades.
 #
-# For each (d, seed) a single 50/50 train/test split is drawn, both methods run
+# Four methods share the same LMC prior (W, ℓs, σ2s, R):
+#   ss   — SS-LMC, message passing along the 1-D nearest-neighbour chain
+#   km   — KM-LMC, exact dense kernel matrix (the accuracy ceiling)
+#   svgp — SVGP-LMC, M inducing points
+#   vec  — Vecchia/NNGP-LMC, conditioning on m nearest neighbours in the full
+#          M-dimensional input space (see `src/vecchia.jl`)
+#
+# `vec` is the sharpest comparison for this sweep: like SS-LMC it is built on a
+# nearest-neighbour ordering, but it keeps the M-dimensional geometry instead of
+# compressing it into one chain, so the ss-vs-vec gap isolates the cost of the
+# chain compression specifically (rather than of sparsity in general).
+#
+# For each (d, seed) a single 50/50 train/test split is drawn, every method runs
 # one inference pass, and held-out RMSE/MNLL are recorded alongside the raw
 # NN-chain quality so any accuracy gap can be correlated with chain stretch.
 
@@ -92,16 +104,17 @@ end
 """
     run_dim_sweep(cfg_template, eval_fn_factory; ds, seeds, train_frac, output_dir) -> Vector{Dict}
 
-Sweep held-out posterior quality over input dimensions `ds`, comparing SS-LMC and
-the exact kernel-matrix LMC (KM-LMC). `eval_fn_factory(d)` must return a function
-whose input is a length-`d` vector. The other config fields (`D`, `Q`, `N`, etc.)
-are held fixed.
+Sweep held-out posterior quality over input dimensions `ds`, comparing SS-LMC,
+the exact kernel-matrix LMC (KM-LMC), SVGP-LMC (`M_svgp` inducing points per
+latent) and Vecchia/NNGP-LMC (`m_vecchia` nearest neighbouring locations).
+`eval_fn_factory(d)` must return a function whose input is a length-`d` vector.
+The other config fields (`D`, `Q`, `N`, etc.) are held fixed.
 
 For each (d, seed):
   1. Build a config with this `d` and `seed`.
   2. `setup_experiment` once, then draw a `train_frac` train/test split.
-  3. SS-LMC: one `infer` pass; KM-LMC: one kernel-matrix prediction.
-  4. Compute held-out RMSE and MNLL for both methods.
+  3. Run one inference pass per method against that identical split.
+  4. Compute held-out RMSE and MNLL for every method.
   5. Record `nn_chain_quality(Xo)` and per-method inference time.
 
 Writes `comparison.json` and rendered figures to `output_dir`.
@@ -110,6 +123,7 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                       ds::Vector{Int}=[2, 4, 8, 16, 32], seeds=0:4,
                       train_frac::Float64=0.5,
                       M_svgp::Int=64,
+                      m_vecchia::Int=20,
                       output_dir::String="data/dim_sweep")
     mkpath(output_dir)
     all_results = Dict{String, Any}[]
@@ -143,6 +157,7 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
             mask_warm = _generate_obs_mask(cfg, cfg.N, MersenneTwister(1000))
             baseline_po_variance_acquisition(setup_baseline_po(cfg, split_warm.sd, mask_warm), cfg)
             _lmc_svgp_predict(setup_svgp(cfg, split_warm.sd; M=M_svgp, Z_seed=9999))
+            _lmc_vecchia_predict(setup_vecchia(cfg, split_warm.sd; m=m_vecchia))
         catch e
             @warn "Warmup pass failed (continuing anyway)" exception=e
         end
@@ -228,7 +243,27 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                 end
             end
 
-            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) svgp_rmse=round(svgp_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4) svgp_mnll=round(svgp_mnll; digits=4)
+            # ── Vecchia/NNGP-LMC: local kriging on m nearest observed neighbours ──
+            # Neighbour search is part of the Vecchia wall-clock budget, matching
+            # how K-means inducing selection is charged to SVGP.
+            @info "Running Vecchia (d=$d, seed=$seed)"
+            vec_rmse = NaN; vec_mnll = NaN
+            vec_time = @elapsed begin
+                try
+                    vec_state = setup_vecchia(cfg, sd; m=m_vecchia)
+                    pred = _lmc_vecchia_predict(vec_state)
+                    # Rescale to original output scale (matches the other paths).
+                    μ_orig = [pred.μ_pred[i] .* sd.σy .+ sd.μy for i in 1:N]
+                    σ_orig = [pred.σ_pred[i] .* sd.σy           for i in 1:N]
+                    vec_rmse = _compute_rmse_test(μ_orig, sd.Ytrue, test_idx, D)
+                    vec_mnll = _compute_mnll_obs(μ_orig, σ_orig, sd.Ytrue,
+                                                 test_idx, sd.σy, cfg.R_diag_init, D)
+                catch e
+                    @warn "Vecchia prediction failed (d=$d, seed=$seed)" exception=e
+                end
+            end
+
+            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) svgp_rmse=round(svgp_rmse; digits=4) vec_rmse=round(vec_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4) svgp_mnll=round(svgp_mnll; digits=4) vec_mnll=round(vec_mnll; digits=4)
 
             push!(all_results, Dict(
                 "d"     => d,
@@ -243,6 +278,7 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                 "ss"   => Dict("rmse" => ss_rmse,   "mnll" => ss_mnll,   "time" => ss_time),
                 "km"   => Dict("rmse" => km_rmse,   "mnll" => km_mnll,   "time" => km_time),
                 "svgp" => Dict("rmse" => svgp_rmse, "mnll" => svgp_mnll, "time" => svgp_time),
+                "vec"  => Dict("rmse" => vec_rmse,  "mnll" => vec_mnll,  "time" => vec_time),
             ))
         end
     end
@@ -265,12 +301,12 @@ end
 
 Render the dim_sweep figures: held-out RMSE vs d, held-out MNLL vs d,
 fit+predict time vs d (log-y), and raw NN-chain quality vs d. Each plot
-overlays SS-LMC, KM-LMC, and SVGP-LMC where applicable.
+overlays SS-LMC, KM-LMC, SVGP-LMC, and Vecchia-LMC where applicable.
 """
 function _plot_dim_sweep(results, ds, output_dir)
-    methods = ["ss", "km", "svgp"]
-    labels  = ["SS-LMC", "KM-LMC", "SVGP-LMC"]
-    colors  = [:blue, :red, :green]
+    methods = ["ss", "km", "svgp", "vec"]
+    labels  = ["SS-LMC", "KM-LMC", "SVGP-LMC", "Vecchia-LMC"]
+    colors  = [:blue, :red, :green, :purple]
 
     _nanmean(x)   = (v = filter(!isnan, x); isempty(v) ? NaN : mean(v))
     _nanstd(x)    = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
@@ -310,7 +346,7 @@ function _plot_dim_sweep(results, ds, output_dir)
     # Chain quality vs d
     save_plot(joinpath(output_dir, "chain_quality_vs_d")) do
         p = plot(; xlabel="Input dimension M", ylabel="Chain Δ (consecutive distance)",
-                 legend=:topleft, xscale=:log2, theme_kw...)
+                 legend=:topleft, xscale=:log2, plot_kw...)
         mean_curve = Float64[]; mean_std = Float64[]
         max_curve  = Float64[]; max_std  = Float64[]
         for d in ds
