@@ -23,6 +23,45 @@ stages:
       - data/partial_obs/metrics.json:
           cache: false
 
+  chain_start_sensitivity:
+    cmd: julia --project=. experiments/chain_start_sensitivity.jl
+    deps:
+      - experiments/chain_start_sensitivity.jl
+      - src
+      - data/ett/ETTh1.csv
+    params:
+      - chain_start_sensitivity
+    outs:
+      - data/chain_start_sensitivity/comparison.json
+      - data/chain_start_sensitivity/rmse_spread_vs_C.png
+      - data/chain_start_sensitivity/rmse_spread_vs_C.tikz
+      - data/chain_start_sensitivity/mnll_spread_vs_C.png
+      - data/chain_start_sensitivity/mnll_spread_vs_C.tikz
+      - data/chain_start_sensitivity/std_vs_C.png
+      - data/chain_start_sensitivity/std_vs_C.tikz
+      - data/chain_start_sensitivity/metric_vs_distortion.png
+      - data/chain_start_sensitivity/metric_vs_distortion.tikz
+    metrics:
+      - data/chain_start_sensitivity/metrics.json:
+          cache: false
+
+  chain_start_dim:
+    cmd: julia --project=. experiments/chain_start_dim.jl
+    deps:
+      - experiments/chain_start_dim.jl
+      - src
+    params:
+      - chain_start_dim
+    outs:
+      - data/chain_start_dim/comparison.json
+      - data/chain_start_dim/std_vs_M.png
+      - data/chain_start_dim/std_vs_M.tikz
+      - data/chain_start_dim/rmse_spread_vs_M.png
+      - data/chain_start_dim/rmse_spread_vs_M.tikz
+    metrics:
+      - data/chain_start_dim/metrics.json:
+          cache: false
+
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:

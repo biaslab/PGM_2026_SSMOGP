@@ -26,6 +26,44 @@ partial_obs:
   sigma2s: [1.0, 1.0, 1.0]
   M: 64                         # SVGP-LMC inducing points (per latent, shared across Q)
 
+chain_start_sensitivity:
+  # Experiment A — NN-chain starting-point sensitivity on ETT, swept over the
+  # candidate chain length C (= 2N). Empirical companion to Proposition 1: how
+  # much do forecast RMSE/MNLL vary across `n_starts` chain starts. SS-LMC (raw
+  # Kalman) is the method under test; KM-LMC is an order-invariant control.
+  # Dropout is fixed on physical rows and W is fixed per seed (same observed data
+  # across starts) so the spread reflects pure path dependence. Per start we take
+  # the median over seeds, then report the spread across starts.
+  data_path: data/ett/ETTh1.csv
+  input_cols: [1, 3, 5]         # HUFL, MUFL, LUFL (M=3 input)
+  output_cols: [2, 4, 6, 7]     # HULL, MULL, LULL, OT (D=4 output)
+  D: 4                          # output dimension
+  L: 3                          # latent GPs
+  R_diag_init: 0.2
+  Ns: [500, 1000, 2000]         # window N; candidate chain length C = 2N ∈ {1000,2000,4000}
+  n_starts: 20                  # distinct chain starting points per C
+  p: 0.3                        # dropout on training-half outputs (physical-row fixed)
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # dropout/W realizations
+  km_max_N: 2000                # KM-LMC control skipped above this N (dense (D·2N)² kernel)
+  ls: [0.5, 1.0, 2.0]           # length-scales ℓ_l
+  gamma2s: [1.0, 1.0, 1.0]      # output scales γ²_l
+
+chain_start_dim:
+  # Experiment B — starting-point sensitivity vs input dimension M on the
+  # synthetic sensor network (C fixed). Tests whether path dependence grows as
+  # the chain compresses higher-dimensional geometry. SS-LMC only; per (M,start)
+  # median over seeds, then spread across starts. Matches the dim_sweep config.
+  ds: [2, 4, 8, 16, 32]         # input dimensions M
+  N: 2000                       # candidate chain length C
+  D: 3                          # output dimension
+  Q: 2                          # latent GPs (paper L)
+  R_diag_init: 0.1
+  train_frac: 0.5               # fraction of candidates observed (rest held out)
+  n_starts: 10                  # distinct chain starting points per M
+  seeds: [0, 1, 2, 3, 4]        # candidate-set / W realizations
+  ls: [1.0, 2.0]                # length-scales ℓ_l
+  sigma2s: [2.0, 1.0]           # output scales γ²_l
+
 quadrature:
   # Bayesian Quadrature on 1D synthetic benchmark (sinusoidal latents)
   # d=1 means NN chain = natural ordering, so SS-GP is exact
