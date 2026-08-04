@@ -376,3 +376,87 @@ stages:
       hash: md5
       md5: 98f8fcef6428465978452dc1ec7b4b2f
       size: 9012
+  dim_sweep:
+    cmd: julia --project=. experiments/dim_sweep.jl
+    deps:
+    - path: experiments/dim_sweep.jl
+      hash: md5
+      md5: 5e250f5650b169a978ba27665cd4cff8
+      size: 3011
+    - path: src
+      hash: md5
+      md5: 563c2915de8d9d48f387352bb2863fed.dir
+      size: 129666
+      nfiles: 17
+    params:
+      params.yaml:
+        dim_sweep:
+          ds:
+          - 2
+          - 4
+          - 8
+          - 16
+          - 32
+          D: 3
+          Q: 2
+          N: 2000
+          train_frac: 0.5
+          steps: 1
+          n_seed: 5
+          beta: 2.0
+          R_diag_init: 0.1
+          log_every: 20
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 2.0
+          sigma2s:
+          - 2.0
+          - 1.0
+          M_svgp: 64
+    outs:
+    - path: data/dim_sweep/chain_quality_vs_d.png
+      hash: md5
+      md5: c5270c58dcc80e68ce337185f911a19d
+      size: 12233
+    - path: data/dim_sweep/chain_quality_vs_d.tikz
+      hash: md5
+      md5: ab4173cc13f47e945f4ae67a189b7fc4
+      size: 8155
+    - path: data/dim_sweep/comparison.json
+      hash: md5
+      md5: ef1c524d60b6cc8180c6e74e4938e2d7
+      size: 15051
+    - path: data/dim_sweep/metrics.json
+      hash: md5
+      md5: 5e5518462223cafb1e688bd27a36f6ac
+      size: 2316
+    - path: data/dim_sweep/mnll_vs_d.png
+      hash: md5
+      md5: 17350e02ac7681dfedc746bbe729f855
+      size: 18481
+    - path: data/dim_sweep/mnll_vs_d.tikz
+      hash: md5
+      md5: 64d2f4c721a880883f0286ea1176b9f3
+      size: 10185
+    - path: data/dim_sweep/rmse_vs_d.png
+      hash: md5
+      md5: cc42caf38383dfa7b7ec17b903a1f693
+      size: 16693
+    - path: data/dim_sweep/rmse_vs_d.tikz
+      hash: md5
+      md5: 9da79a1e1e98ef1d7a6a31df8b4691da
+      size: 10166
+    - path: data/dim_sweep/time_vs_d.png
+      hash: md5
+      md5: 6ff601889713a3ec7cfd17d51ad92fe8
+      size: 11206
+    - path: data/dim_sweep/time_vs_d.tikz
+      hash: md5
+      md5: b5330f982fdd8d3fbb7e01cd92f50d53
+      size: 9980
