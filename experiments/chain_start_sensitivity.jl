@@ -180,6 +180,35 @@ function _edge_jaccard(orders::Vector{Vector{Int}})
     isempty(ov) ? NaN : mean(ov)
 end
 
+# ─── Start-selection schemes ─────────────────────────────────────────────────
+# Standardized joint input matrix (C × M) for a window N — used to pick starts.
+function _ett_inputs(data, N, input_cols)
+    C = 2N
+    Xr = Matrix{Float64}(@view data[1:C, input_cols])
+    μx = vec(mean(@view(Xr[1:N, :]), dims=1)); σx = vec(std(@view(Xr[1:N, :]), dims=1)) .+ 1e-8
+    (Xr .- μx') ./ σx'
+end
+
+_even_starts(C, k) = unique(round.(Int, range(1, C, length=k)))
+_random_starts(C, k, seed) = sort(unique(rand(MersenneTwister(seed), 1:C, 3k)))[1:k]
+# Farthest-point sampling of starts: maximally spread starting points (an
+# adversarial attempt to force diverse chains).
+function _farthest_starts(X, k)
+    C = size(X, 1)
+    c = vec(mean(X, dims=1))
+    S = [argmax([sqdist(row(X, i), c) for i in 1:C])]
+    while length(S) < k
+        best = -1.0; bi = 0
+        for i in 1:C
+            i in S && continue
+            md = minimum(sqdist(row(X, i), row(X, s)) for s in S)
+            md > best && (best = md; bi = i)
+        end
+        push!(S, bi)
+    end
+    S
+end
+
 # ─── Plots (paper export style: ~560x380 + tikz via save_plot) ───────────────
 # Per-C zoomed panels of the per-start median metric; SS vs order-invariant KM.
 function _spread_plot(perstart, Ns, ss_key, km_key, ylab, fname, output_dir)
@@ -246,6 +275,26 @@ function _distortion_plot(perstart, Ns, output_dir)
                          markersize=4, markerstrokewidth=0)
             end
             push!(panels, p)
+        end
+        plot(panels...; layout=(1, 2), size=(760, 360))
+    end
+end
+
+# Start-scheme robustness: RMSE std across starts and chain diversity per scheme.
+function _scheme_plot(scheme_summary, Ns, output_dir)
+    save_plot(joinpath(output_dir, "scheme_comparison")) do
+        Cs = Float64[2N for N in Ns]
+        panels = []
+        for (metric, ylab) in (("rmse_std", "RMSE std across starts"),
+                               ("edge_jaccard", "Chain edge-Jaccard (↓ = more diverse)"))
+            pp = plot(; xlabel="Candidate chain length C", ylabel=ylab, xscale=:log10,
+                      xticks=(Cs, string.(Int.(Cs))), legend=:best,
+                      left_margin=8Plots.mm, bottom_margin=6Plots.mm)
+            for (name, col) in (("even", :blue), ("random", :orange), ("diverse", :green))
+                ys = Float64[scheme_summary["C=$(2N)/$name"][metric] for N in Ns]
+                plot!(pp, Cs, ys; color=col, lw=2, marker=:circle, label=name)
+            end
+            push!(panels, pp)
         end
         plot(panels...; layout=(1, 2), size=(760, 360))
     end
@@ -367,8 +416,46 @@ for N in Ns
     )
 end
 
+# ─── Start-scheme robustness check ───────────────────────────────────────────
+# Does the small spread survive an adversarial choice of starts? Compare even,
+# random, and farthest-point (maximally diverse) start schemes. If diverse starts
+# neither lower the edge-Jaccard nor raise the spread, the greedy chain is
+# self-correcting w.r.t. its start and the reported spread is representative, not
+# a lucky lower bound. Uses a few seeds (SS-LMC only — KM is order-invariant).
+scheme_seeds = seeds[1:min(3, length(seeds))]
+scheme_summary = Dict{String,Any}()
+for N in Ns
+    C = 2N
+    X = _ett_inputs(data, N, input_cols)
+    schemes = ("even" => _even_starts(C, n_starts),
+               "random" => _random_starts(C, n_starts, 123),
+               "diverse" => _farthest_starts(X, n_starts))
+    @info "ETT start-scheme check" C=C n_scheme_seeds=length(scheme_seeds)
+    for (name, starts) in schemes
+        pr = Float64[]; pm = Float64[]; ords = Vector{Int}[]
+        for start in starts
+            rs = Float64[]; ms = Float64[]
+            for (k, sd) in enumerate(scheme_seeds)
+                setup = build_setup_start(data, N, N, p_drop, sd, start,
+                                          D, L, input_cols, output_cols)
+                k == 1 && push!(ords, setup.order)
+                ss = RxBayesOpt.forecast_ss_raw(setup, D, L, ℓs, γ2s, R_diag_init)
+                push!(rs, ss.rmse); push!(ms, ss.mnll)
+            end
+            push!(pr, _med(rs)); push!(pm, _med(ms))
+        end
+        prf = _finite(pr); pmf = _finite(pm)
+        scheme_summary["C=$C/$name"] = Dict(
+            "edge_jaccard" => _edge_jaccard(ords),
+            "rmse_std" => length(prf) > 1 ? std(prf) : 0.0,
+            "mnll_std" => length(pmf) > 1 ? std(pmf) : 0.0,
+            "rmse_mean" => isempty(prf) ? nothing : mean(prf))
+    end
+end
+
 metrics = Dict("p"=>p_drop, "n_seeds"=>length(seeds), "n_starts"=>n_starts,
-               "Ns"=>Ns, "Cs"=>[2N for N in Ns], "per_C"=>summary)
+               "Ns"=>Ns, "Cs"=>[2N for N in Ns], "per_C"=>summary,
+               "scheme_seeds"=>scheme_seeds, "scheme_comparison"=>scheme_summary)
 open(joinpath(output_dir, "metrics.json"), "w") do io
     JSON.print(io, _safe(metrics), 2)
 end
@@ -382,6 +469,7 @@ try
                  "mnll_spread_vs_C", output_dir)
     _std_vs_C_plot(summary, Ns, output_dir)
     _distortion_plot(perstart, Ns, output_dir)
+    _scheme_plot(scheme_summary, Ns, output_dir)
 catch e
     @warn "Plotting failed (results are saved in JSON)" exception=e
 end

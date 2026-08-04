@@ -69,6 +69,30 @@ function _edge_jaccard(orders::Vector{Vector{Int}})
     isempty(ov) ? NaN : mean(ov)
 end
 
+# Start-selection schemes (mirrors chain_start_sensitivity.jl).
+function _dim_inputs(N, M, seed)
+    X = randn(MersenneTwister(seed), N, M)
+    μx = vec(mean(X, dims=1)); σx = vec(std(X, dims=1)) .+ eps()
+    (X .- μx') ./ σx'
+end
+_even_starts(C, k) = unique(round.(Int, range(1, C, length=k)))
+_random_starts(C, k, seed) = sort(unique(rand(MersenneTwister(seed), 1:C, 3k)))[1:k]
+function _farthest_starts(X, k)
+    C = size(X, 1)
+    c = vec(mean(X, dims=1))
+    S = [argmax([sqdist(row(X, i), c) for i in 1:C])]
+    while length(S) < k
+        best = -1.0; bi = 0
+        for i in 1:C
+            i in S && continue
+            md = minimum(sqdist(row(X, i), row(X, s)) for s in S)
+            md > best && (best = md; bi = i)
+        end
+        push!(S, bi)
+    end
+    S
+end
+
 _finite(v) = filter(isfinite, v)
 _med(v)    = (f = _finite(v); isempty(f) ? NaN : median(f))
 function _stats(v::Vector{Float64})
@@ -197,6 +221,28 @@ function _spread_vs_M_plot(perstart, ds, output_dir)
     end
 end
 
+# Start-scheme robustness vs M: does an adversarial (farthest-point) choice of
+# starts make the chains diverge and the spread grow as M rises?
+function _scheme_plot_M(scheme_summary, ds, output_dir)
+    save_plot(joinpath(output_dir, "scheme_comparison")) do
+        Ms = Float64.(ds)
+        panels = []
+        for (metric, ylab) in (("edge_jaccard", "Chain edge-Jaccard (↓ = more diverse)"),
+                               ("rmse_std", "RMSE std across starts"),
+                               ("mnll_std", "MNLL std across starts"))
+            pp = plot(; xlabel="Input dimension M", ylabel=ylab, xscale=:log2,
+                      xticks=(Ms, string.(ds)), legend=:best,
+                      left_margin=8Plots.mm, bottom_margin=6Plots.mm)
+            for (name, col) in (("even", :blue), ("random", :orange), ("diverse", :green))
+                ys = Float64[scheme_summary["M=$d/$name"][metric] for d in ds]
+                plot!(pp, Ms, ys; color=col, lw=2, marker=:circle, label=name)
+            end
+            push!(panels, pp)
+        end
+        plot(panels...; layout=(1, 3), size=(960, 340))
+    end
+end
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 params = YAML.load_file(joinpath(@__DIR__, "..", "params.yaml"))
 pc = params["chain_start_dim"]
@@ -292,8 +338,44 @@ for M in ds
     )
 end
 
+# ─── Start-scheme robustness check vs M ──────────────────────────────────────
+# Compare even, random, and farthest-point (adversarially diverse) start schemes
+# per M. Starts are picked from each seed's candidate set; we report the mean
+# (over seeds) across-start std and edge-Jaccard. If diverse starts lower the
+# edge-Jaccard and raise the spread only at high M, path dependence is a
+# high-dimensional effect (the chain self-corrects at low M).
+scheme_seeds = seeds[1:min(3, length(seeds))]
+scheme_summary = Dict{String,Any}()
+for M in ds
+    eval_fn = make_sensor_network(; d=M, D=D)
+    @info "Synthetic start-scheme check" M=M n_scheme_seeds=length(scheme_seeds)
+    for name in ("even", "random", "diverse")
+        rstds = Float64[]; mstds = Float64[]; jacs = Float64[]
+        for sd in scheme_seeds
+            X = _dim_inputs(N, M, sd)
+            starts = name == "even"   ? _even_starts(N, n_starts) :
+                     name == "random" ? _random_starts(N, n_starts, sd + 555) :
+                                        _farthest_starts(X, n_starts)
+            rs = Float64[]; ms = Float64[]; ords = Vector{Int}[]
+            for start in starts
+                r = run_ss_start(eval_fn, N, M, D, L, ℓs, γ2s, R_diag_init,
+                                 train_frac, sd, start)
+                push!(rs, r.rmse); push!(ms, r.mnll); push!(ords, r.order)
+            end
+            rf = _finite(rs); mf = _finite(ms)
+            push!(rstds, length(rf) > 1 ? std(rf) : 0.0)
+            push!(mstds, length(mf) > 1 ? std(mf) : 0.0)
+            push!(jacs, _edge_jaccard(ords))
+        end
+        scheme_summary["M=$M/$name"] = Dict(
+            "rmse_std" => mean(rstds), "mnll_std" => mean(mstds),
+            "edge_jaccard" => mean(_finite(jacs)))
+    end
+end
+
 metrics = Dict("ds"=>ds, "C"=>N, "n_seeds"=>length(seeds),
-               "n_starts"=>n_starts, "per_M"=>summary)
+               "n_starts"=>n_starts, "per_M"=>summary,
+               "scheme_seeds"=>scheme_seeds, "scheme_comparison"=>scheme_summary)
 open(joinpath(output_dir, "metrics.json"), "w") do io
     JSON.print(io, _safe(metrics), 2)
 end
@@ -302,6 +384,7 @@ end
 try
     _std_vs_M_plot(summary, ds, output_dir)
     _spread_vs_M_plot(perstart, ds, output_dir)
+    _scheme_plot_M(scheme_summary, ds, output_dir)
 catch e
     @warn "Plotting failed (results are saved in JSON)" exception=e
 end

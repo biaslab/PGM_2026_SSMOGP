@@ -41,6 +41,8 @@ stages:
       - data/chain_start_sensitivity/std_vs_C.tikz
       - data/chain_start_sensitivity/metric_vs_distortion.png
       - data/chain_start_sensitivity/metric_vs_distortion.tikz
+      - data/chain_start_sensitivity/scheme_comparison.png
+      - data/chain_start_sensitivity/scheme_comparison.tikz
     metrics:
       - data/chain_start_sensitivity/metrics.json:
           cache: false
@@ -58,6 +60,8 @@ stages:
       - data/chain_start_dim/std_vs_M.tikz
       - data/chain_start_dim/rmse_spread_vs_M.png
       - data/chain_start_dim/rmse_spread_vs_M.tikz
+      - data/chain_start_dim/scheme_comparison.png
+      - data/chain_start_dim/scheme_comparison.tikz
     metrics:
       - data/chain_start_dim/metrics.json:
           cache: false
