@@ -66,6 +66,20 @@ stages:
       - data/chain_start_dim/metrics.json:
           cache: false
 
+  chain_start_paper:
+    cmd: julia --project=. experiments/plot_chain_start_paper.jl
+    deps:
+      - experiments/plot_chain_start_paper.jl
+      - data/chain_start_dim/comparison.json
+      - data/chain_start_dim/metrics.json
+      - data/chain_start_sensitivity/comparison.json
+      - data/chain_start_sensitivity/metrics.json
+    outs:
+      - data/chain_start_paper/spread_vs_M.png
+      - data/chain_start_paper/spread_vs_M.tikz
+      - data/chain_start_paper/spread_vs_C.png
+      - data/chain_start_paper/spread_vs_C.tikz
+
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:

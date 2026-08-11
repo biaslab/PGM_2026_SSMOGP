@@ -59,8 +59,10 @@ chain_start_dim:
   Q: 2                          # latent GPs (paper L)
   R_diag_init: 0.1
   train_frac: 0.5               # fraction of candidates observed (rest held out)
-  n_starts: 10                  # distinct chain starting points per M
-  seeds: [0, 1, 2, 3, 4]        # candidate-set / W realizations
+  n_starts: 20                  # distinct chain starting points per M
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # candidate-set / W realizations
+                                # (matches Experiment A's 20 starts × 10 seeds,
+                                #  halving the CI width on the spread estimate)
   ls: [1.0, 2.0]                # length-scales ℓ_l
   sigma2s: [2.0, 1.0]           # output scales γ²_l
 

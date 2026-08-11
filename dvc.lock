@@ -460,3 +460,227 @@ stages:
       hash: md5
       md5: b5330f982fdd8d3fbb7e01cd92f50d53
       size: 9980
+  chain_start_dim:
+    cmd: julia --project=. experiments/chain_start_dim.jl
+    deps:
+    - path: experiments/chain_start_dim.jl
+      hash: md5
+      md5: d9308975eb9a872a6e4e6cc505a801f5
+      size: 17053
+    - path: src
+      hash: md5
+      md5: b226b530a61a3dd363045cf5d46aa966.dir
+      size: 130015
+      nfiles: 17
+    params:
+      params.yaml:
+        chain_start_dim:
+          ds:
+          - 2
+          - 4
+          - 8
+          - 16
+          - 32
+          N: 2000
+          D: 3
+          Q: 2
+          R_diag_init: 0.1
+          train_frac: 0.5
+          n_starts: 20
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          ls:
+          - 1.0
+          - 2.0
+          sigma2s:
+          - 2.0
+          - 1.0
+    outs:
+    - path: data/chain_start_dim/comparison.json
+      hash: md5
+      md5: 0d0917421c7ac957c62959860e088356
+      size: 237525
+    - path: data/chain_start_dim/metrics.json
+      hash: md5
+      md5: 9eac7395331c4db4ea89225dabbb6b2e
+      size: 7508
+    - path: data/chain_start_dim/rmse_spread_vs_M.png
+      hash: md5
+      md5: a6817cc9693f1aa01b80c73cbfced0fe
+      size: 14384
+    - path: data/chain_start_dim/rmse_spread_vs_M.tikz
+      hash: md5
+      md5: 48f32f55f082fa01a052cb2519ba0df2
+      size: 16388
+    - path: data/chain_start_dim/scheme_comparison.png
+      hash: md5
+      md5: fe20bc5896ea10b9609c53e8696c6ee1
+      size: 75995
+    - path: data/chain_start_dim/scheme_comparison.tikz
+      hash: md5
+      md5: fd842e581ccc55670bbb0bb86e180276
+      size: 15754
+    - path: data/chain_start_dim/std_vs_M.png
+      hash: md5
+      md5: d38ff797a6236dedae98c4bd4da9ed3f
+      size: 49640
+    - path: data/chain_start_dim/std_vs_M.tikz
+      hash: md5
+      md5: 0dff3d8fc17e4941b01eb01a41483068
+      size: 11638
+  chain_start_sensitivity:
+    cmd: julia --project=. experiments/chain_start_sensitivity.jl
+    deps:
+    - path: data/ett/ETTh1.csv
+      hash: md5
+      md5: 8381763947c85f4be6ac456c508460d6
+      size: 2589657
+    - path: experiments/chain_start_sensitivity.jl
+      hash: md5
+      md5: 416c0b609643935d92553af42ebfc84a
+      size: 21743
+    - path: src
+      hash: md5
+      md5: b226b530a61a3dd363045cf5d46aa966.dir
+      size: 130015
+      nfiles: 17
+    params:
+      params.yaml:
+        chain_start_sensitivity:
+          data_path: data/ett/ETTh1.csv
+          input_cols:
+          - 1
+          - 3
+          - 5
+          output_cols:
+          - 2
+          - 4
+          - 6
+          - 7
+          D: 4
+          L: 3
+          R_diag_init: 0.2
+          Ns:
+          - 500
+          - 1000
+          - 2000
+          n_starts: 20
+          p: 0.3
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          km_max_N: 2000
+          ls:
+          - 0.5
+          - 1.0
+          - 2.0
+          gamma2s:
+          - 1.0
+          - 1.0
+          - 1.0
+    outs:
+    - path: data/chain_start_sensitivity/comparison.json
+      hash: md5
+      md5: 1a06c80b1eab550384bab335858c5bad
+      size: 172576
+    - path: data/chain_start_sensitivity/metric_vs_distortion.png
+      hash: md5
+      md5: 9be4914d983728a2d81005d0d34ef83a
+      size: 21329
+    - path: data/chain_start_sensitivity/metric_vs_distortion.tikz
+      hash: md5
+      md5: 6be380a35a0d7f0e010286504bdc2271
+      size: 16103
+    - path: data/chain_start_sensitivity/metrics.json
+      hash: md5
+      md5: 17f6efbbf365c7fa018c1114f3c401cc
+      size: 8103
+    - path: data/chain_start_sensitivity/mnll_spread_vs_C.png
+      hash: md5
+      md5: 8ec1222dffa0d127def2bf4f709cd682
+      size: 52672
+    - path: data/chain_start_sensitivity/mnll_spread_vs_C.tikz
+      hash: md5
+      md5: 1bc9f0ea557157d5cffd4e90e7fe1790
+      size: 19280
+    - path: data/chain_start_sensitivity/rmse_spread_vs_C.png
+      hash: md5
+      md5: f684f8abe4f4c6187129ca831c42ae6e
+      size: 57464
+    - path: data/chain_start_sensitivity/rmse_spread_vs_C.tikz
+      hash: md5
+      md5: 84170119f9ea73bbe3831fbfcc05da20
+      size: 19323
+    - path: data/chain_start_sensitivity/scheme_comparison.png
+      hash: md5
+      md5: 8af8eb5d0f885fc3f27682bdb13845c8
+      size: 65035
+    - path: data/chain_start_sensitivity/scheme_comparison.tikz
+      hash: md5
+      md5: 6334edef24be61cd9180b1e9d652f3b4
+      size: 10509
+    - path: data/chain_start_sensitivity/std_vs_C.png
+      hash: md5
+      md5: 31e67d680096923c1518d77cbdd58256
+      size: 39765
+    - path: data/chain_start_sensitivity/std_vs_C.tikz
+      hash: md5
+      md5: 2de8a28111822e723eab46e3c4467f41
+      size: 9214
+  chain_start_paper:
+    cmd: julia --project=. experiments/plot_chain_start_paper.jl
+    deps:
+    - path: data/chain_start_dim/comparison.json
+      hash: md5
+      md5: 0d0917421c7ac957c62959860e088356
+      size: 237525
+    - path: data/chain_start_dim/metrics.json
+      hash: md5
+      md5: 9eac7395331c4db4ea89225dabbb6b2e
+      size: 7508
+    - path: data/chain_start_sensitivity/comparison.json
+      hash: md5
+      md5: 1a06c80b1eab550384bab335858c5bad
+      size: 172576
+    - path: data/chain_start_sensitivity/metrics.json
+      hash: md5
+      md5: 17f6efbbf365c7fa018c1114f3c401cc
+      size: 8103
+    - path: experiments/plot_chain_start_paper.jl
+      hash: md5
+      md5: 825d062eb57493e6b52526625a7cc789
+      size: 8536
+    outs:
+    - path: data/chain_start_paper/spread_vs_C.png
+      hash: md5
+      md5: a0e2776bc141e88a1c8c88e0457f903d
+      size: 20530
+    - path: data/chain_start_paper/spread_vs_C.tikz
+      hash: md5
+      md5: c90e5be89186f7a9b8f4f53f135f64dc
+      size: 6336
+    - path: data/chain_start_paper/spread_vs_M.png
+      hash: md5
+      md5: 21b4444936e974420052160e4a1184d4
+      size: 20806
+    - path: data/chain_start_paper/spread_vs_M.tikz
+      hash: md5
+      md5: 170710cfbaeba1c3043600c554d1038b
+      size: 7406

@@ -19,7 +19,7 @@ Two experiments (branch `starting-points`):
 | Data | ETTh1 (real) | synthetic sensor network |
 | Swept axis | candidate chain length **C** (= 2N) | input dimension **M** |
 | Method(s) | SS-LMC + KM-LMC control | SS-LMC |
-| Starts × seeds | 20 × 10 | 10 × 5 |
+| Starts × seeds | 20 × 10 | 20 × 10 |
 | Output dir | `data/chain_start_sensitivity/` | `data/chain_start_dim/` |
 
 Notation follows the paper: **M** input dim, **D** outputs, **L** latents,
@@ -118,32 +118,62 @@ same order-of-magnitude spread. **Adversarially diverse starts do not make the
 chains diverge, nor do they raise the spread** — the greedy chain self-corrects
 w.r.t. its start.
 
-### Experiment B — synthetic, spread across starts vs M (10 starts × 5 seeds, C=2000)
+### Experiment B — synthetic, spread across starts vs M (20 starts × 10 seeds, C=2000)
 
 | M | SS RMSE mean | SS RMSE std | SS RMSE CV | SS MNLL std | mean Δ | edge-Jaccard |
 |---:|---:|---:|---:|---:|---:|---:|
-| 2 | 0.1570 | 0.00077 | 0.49% | 0.00113 | 0.095 | 0.717 |
-| 4 | 0.1810 | 0.00013 | 0.07% | 0.00708 | 0.525 | 0.565 |
-| 8 | 0.1068 | 0.00061 | 0.57% | 0.01810 | 1.549 | 0.483 |
-| 16 | 0.3405 | 0.00174 | 0.51% | 0.01084 | 3.213 | 0.428 |
-| 32 | 0.5172 | 0.00157 | 0.30% | 0.01150 | 5.631 | 0.412 |
+| 2 | 0.15773 | 0.000375 | 0.24% | 0.00142 | 0.095 | 0.722 |
+| 4 | 0.16962 | 0.000248 | 0.15% | 0.00416 | 0.524 | 0.565 |
+| 8 | 0.10648 | 0.000395 | 0.37% | 0.00520 | 1.549 | 0.484 |
+| 16 | 0.34323 | 0.001226 | 0.36% | 0.00937 | 3.213 | 0.432 |
+| 32 | 0.51695 | 0.001097 | 0.21% | 0.00610 | 5.631 | 0.420 |
+
+> **Re-run at the larger sample.** This table replaces an earlier 10 starts × 5
+> seeds run, and several of its numbers moved enough to change the conclusions —
+> see "What the larger sample changed" below. The chain quantities (mean Δ,
+> edge-Jaccard) were stable; the *spreads* were not.
 
 - As **M grows the chain stretches** (mean Δ: 0.10 → 5.63) and starts genuinely
-  diverge (**edge-Jaccard 0.72 → 0.41**).
-- **MNLL spread grows ~10–16×** (0.001 → 0.018 by M≥8); RMSE spread also rises but
-  stays small (CV < 0.6%). Predictive *mean* is robust; *calibration* is the
-  sensitive quantity.
-- RMSE means match the paper's dim-sweep (0.153/0.169/0.508 at M=2/4/32).
+  diverge (**edge-Jaccard 0.72 → 0.42**).
+- **RMSE spread is flat for M ≤ 8 (≈2.5–4.0e-4) and steps up ~3× at M ≥ 16**
+  (≈1.1–1.2e-3); the M=8 → M=16 jump is the only one whose bootstrap CIs are
+  disjoint. In relative terms RMSE stays robust throughout (**CV < 0.4%**).
+- **MNLL spread grows ~4–7×** (0.0014 at M=2 → 0.0094 at M=16), then falls back
+  to 0.0061 at M=32 — so it is not monotone. Calibration is still the more
+  sensitive quantity (its spread is ~5–8× the RMSE spread at every M), but the
+  growth is milder than the first run suggested.
+- RMSE means match the paper's dim-sweep more closely than before
+  (0.158/0.170/0.517 here vs 0.153/0.169/0.508 at M=2/4/32).
 
-### Experiment B — start-scheme robustness (3 seeds)
+**What the larger sample changed.** Quadrupling the runs per M (10×5 → 20×10)
+revised the Experiment B spreads substantially, while leaving the RMSE *means*
+and the chain quantities essentially untouched:
+
+| M | RMSE std 10×5 → 20×10 | MNLL std 10×5 → 20×10 |
+|---:|---:|---:|
+| 2 | 0.00077 → 0.00038 | 0.00113 → 0.00142 |
+| 4 | 0.00013 → 0.00025 | 0.00708 → 0.00416 |
+| 8 | 0.00061 → 0.00039 | 0.01810 → 0.00520 |
+| 16 | 0.00174 → 0.00123 | 0.01084 → 0.00937 |
+| 32 | 0.00157 → 0.00110 | 0.01150 → 0.00610 |
+
+Two features of the small run were sampling artifacts: the sharp **RMSE dip at
+M=4** (a 6× notch, now a mild wiggle with overlapping CIs) and the **MNLL spike
+at M=8** (0.018, now 0.005). The headline "MNLL spread grows ~10–16×" was
+inflated by that spike and should be quoted as **~4–7×**. This is exactly the
+failure mode the error bars were added to expose: a std estimated from 10 starts
+carries ~24% relative SE, so single-point features in the first run were never
+resolvable.
+
+### Experiment B — start-scheme robustness (20 starts, 3 seeds)
 
 | M | edge-Jaccard (even/random/diverse) | RMSE std (e/r/d) | MNLL std (e/r/d) |
 |---:|:--|:--|:--|
-| 2 | 0.718 / 0.730 / 0.727 | 0.00034 / 0.00036 / 0.00036 | 0.00154 / 0.00159 / 0.00216 |
-| 4 | 0.581 / 0.573 / 0.571 | 0.00063 / 0.00044 / 0.00043 | 0.00797 / 0.00643 / 0.00587 |
-| 8 | 0.490 / 0.484 / 0.489 | 0.00083 / 0.00051 / 0.00060 | 0.01000 / 0.00570 / 0.00820 |
-| 16 | 0.422 / 0.429 / 0.422 | 0.00247 / 0.00206 / 0.00244 | 0.01322 / 0.01194 / 0.01296 |
-| 32 | 0.416 / 0.416 / 0.416 | 0.00167 / 0.00221 / 0.00205 | 0.01045 / 0.01317 / 0.01398 |
+| 2 | 0.730 / 0.732 / 0.731 | 0.00041 / 0.00041 / 0.00038 | 0.00184 / 0.00208 / 0.00227 |
+| 4 | 0.576 / 0.569 / 0.572 | 0.00050 / 0.00045 / 0.00061 | 0.00745 / 0.00645 / 0.00693 |
+| 8 | 0.487 / 0.489 / 0.492 | 0.00070 / 0.00074 / 0.00067 | 0.00740 / 0.00858 / 0.00771 |
+| 16 | 0.426 / 0.429 / 0.426 | 0.00204 / 0.00231 / 0.00224 | 0.01233 / 0.01306 / 0.01299 |
+| 32 | 0.420 / 0.416 / 0.417 | 0.00184 / 0.00219 / 0.00197 | 0.01106 / 0.01373 / 0.01268 |
 
 At **every M the three schemes coincide**. The chain diversity (edge-Jaccard) and
 the spread are set by **M, not by how the starts are chosen** — even farthest-point
@@ -169,10 +199,14 @@ starts cannot make the chains more diverse than evenly-spaced ones.
 
 3. **What actually governs path dependence is input dimension M.** As M grows the
    chain must compress higher-dimensional geometry into a 1-D sequence: the stretch
-   Δ rises, chains from different starts genuinely diverge (edge-Jaccard 0.72 → 0.41),
-   and the spread grows — most visibly in **MNLL (calibration), ~10–16×**, while RMSE
-   (accuracy) stays robust. This is consistent with, and complementary to, the
-   paper's central "quality degrades with M" narrative.
+   Δ rises, chains from different starts genuinely diverge (edge-Jaccard 0.72 → 0.42),
+   and the spread grows — RMSE spread steps up ~3× between M ≤ 8 and M ≥ 16, and
+   **MNLL (calibration) spread grows ~4–7×**, peaking at M=16 rather than rising
+   monotonically. Calibration remains the more sensitive quantity (~5–8× the RMSE
+   spread at every M), while RMSE stays robust in relative terms (CV < 0.4%). This
+   is consistent with, and complementary to, the paper's central "quality degrades
+   with M" narrative — though at 20 starts × 10 seeds the effect is a step, not the
+   order-of-magnitude climb the first (10 × 5) run appeared to show.
 
 4. **The theoretical proxy is loose in practice.** Per-start chain distortion ε_π
    does not correlate with per-start RMSE (all bootstrap CIs cross zero), reinforcing
@@ -193,6 +227,42 @@ Experiment A (`data/chain_start_sensitivity/`): `rmse_spread_vs_C`,
 
 Experiment B (`data/chain_start_dim/`): `std_vs_M`, `rmse_spread_vs_M`,
 `scheme_comparison`, plus `metrics.json`, `comparison.json`.
+
+**Paper figures** (`data/chain_start_paper/`): `spread_vs_M` and `spread_vs_C`
+(each `.png` + `.tikz`) — the two side-by-side panels for the paper. Both plot a
+single series, the **std across starts** of the per-start (median-over-seeds)
+**SS-LMC held-out RMSE**, on a log axis: (a) vs input dimension M, (b) vs chain
+length C. MNLL and the KM-LMC control are deliberately *not* in these figures;
+they remain in the tables above and in the diagnostic figures.
+
+Error bars are a **percentile bootstrap 95% CI for the std**, resampling the
+per-start values — the plotted quantity is itself an estimated dispersion, so
+its own sampling error is what belongs on the bar. They are wide by
+construction: a std from n starts has relative SE ≈ 1/√(2(n−1)), i.e. ~16% at
+the n=20 starts both experiments now use. Each figure states its sample size on
+the plot. Reading them honestly:
+
+| | spread (95% CI) |
+|---|---|
+| M=2 / 4 / 8 / 16 / 32 | 3.8e-4 [2.8e-4, 4.4e-4] / 2.5e-4 [1.8e-4, 3.0e-4] / 4.0e-4 [2.9e-4, 4.6e-4] / 1.2e-3 [8.0e-4, 1.5e-3] / 1.1e-3 [7.2e-4, 1.4e-3] |
+| C=1000 / 2000 / 4000 | 2.5e-3 [1.6e-3, 3.2e-3] / 4.0e-3 [2.7e-3, 4.9e-3] / 4.3e-3 [2.4e-3, 5.5e-3] |
+
+In (a) the **M ≤ 8 group is cleanly separated from the M ≥ 16 group** (the
+M=8 and M=16 CIs are disjoint, a ~3× step), while the wiggles *within* each
+group are not resolved. In (b) all three CIs overlap, so the mild upward drift
+with C is **not resolved** — the data support "flat in C", not a trend.
+
+The y-limits are not shared between the two figures: both are RMSE spreads but
+in different units (synthetic sensor-network outputs vs raw ETT loads), so their
+absolute levels are not commensurable. For the same reason RMSE and MNLL spreads
+must never share an axis — under a rescaling y → c·y the model is equivariant,
+so RMSE → c·RMSE (its spread scales by c) while MNLL → MNLL + log c (a constant
+shift identical for every start, leaving its spread unchanged); their vertical
+relationship would be an artifact of the unit choice. Built by
+`experiments/plot_chain_start_paper.jl` (`dvc repro chain_start_paper`) — a
+replot from the cached JSON, so it needs no experiment re-run; it cross-checks
+every plotted value against both `metrics.json` and the raw `comparison.json`
+records and warns on any disagreement.
 
 Reproduce: `dvc repro chain_start_sensitivity chain_start_dim`, or run the two
 scripts directly with `julia --project=. experiments/<script>.jl`.
