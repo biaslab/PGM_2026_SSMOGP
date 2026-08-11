@@ -465,6 +465,101 @@ stages:
           - 2
           - 3
           - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          - 16
+          - 17
+          - 18
+          - 19
+          - 20
+          - 21
+          - 22
+          - 23
+          - 24
+          - 25
+          - 26
+          - 27
+          - 28
+          - 29
+          - 30
+          - 31
+          - 32
+          - 33
+          - 34
+          - 35
+          - 36
+          - 37
+          - 38
+          - 39
+          - 40
+          - 41
+          - 42
+          - 43
+          - 44
+          - 45
+          - 46
+          - 47
+          - 48
+          - 49
+          - 50
+          - 51
+          - 52
+          - 53
+          - 54
+          - 55
+          - 56
+          - 57
+          - 58
+          - 59
+          - 60
+          - 61
+          - 62
+          - 63
+          - 64
+          - 65
+          - 66
+          - 67
+          - 68
+          - 69
+          - 70
+          - 71
+          - 72
+          - 73
+          - 74
+          - 75
+          - 76
+          - 77
+          - 78
+          - 79
+          - 80
+          - 81
+          - 82
+          - 83
+          - 84
+          - 85
+          - 86
+          - 87
+          - 88
+          - 89
+          - 90
+          - 91
+          - 92
+          - 93
+          - 94
+          - 95
+          - 96
+          - 97
+          - 98
+          - 99
           ls:
           - 1.0
           - 2.0
@@ -476,57 +571,57 @@ stages:
     outs:
     - path: data/dim_sweep/chain_quality_vs_d.png
       hash: md5
-      md5: 37cc37a828bf1255ce7c7ad6819eee19
-      size: 33738
+      md5: 70ea3cafd7cc54dc8b2493fe208b6069
+      size: 34474
     - path: data/dim_sweep/chain_quality_vs_d.tikz
       hash: md5
-      md5: 853de7f482ec16495de7fe8b9bf1d602
-      size: 8029
+      md5: f82266523d8fc0d32a150534faff856c
+      size: 8009
     - path: data/dim_sweep/comparison.json
       hash: md5
-      md5: 0638616d42ba99bb0e56d24bd85d3c5b
-      size: 17897
+      md5: 5f80a26730d4ec755ed06671e7509385
+      size: 358595
     - path: data/dim_sweep/metrics.json
       hash: md5
-      md5: dd86bcf88779ce3a7423af009b539711
-      size: 2907
+      md5: 9bc7b0e011362d230e1383f6b8e2adf3
+      size: 2927
     - path: data/dim_sweep/mnll_gap_vs_d.png
       hash: md5
-      md5: bfa59780d385e21a744f9bd86e071f98
-      size: 30214
+      md5: b15be87e5e56330b726e4f1b00cc4eec
+      size: 32540
     - path: data/dim_sweep/mnll_gap_vs_d.tikz
       hash: md5
-      md5: b90bcd275c0f730f0cf87e78933b8868
-      size: 6165
+      md5: 6f0dd2b4f007ee1b89ae4a2696d35373
+      size: 6197
     - path: data/dim_sweep/mnll_vs_d.png
       hash: md5
-      md5: 1edfd0389981a9013be85e7272c2d3a0
-      size: 41564
+      md5: aff7bee6f9663e732dcc7d643e57890a
+      size: 42561
     - path: data/dim_sweep/mnll_vs_d.tikz
       hash: md5
-      md5: 86b62dfbccf0738b0428a1d5be14380f
-      size: 11267
+      md5: e53c6f7bf55bdc692ad4a1acb8abd52c
+      size: 11265
     - path: data/dim_sweep/rmse_gap_vs_d.png
       hash: md5
-      md5: a8c14b19be465ef27a32e914e6804c96
-      size: 31346
+      md5: 8af3f70d868edb44eb453d7b556a784e
+      size: 30048
     - path: data/dim_sweep/rmse_gap_vs_d.tikz
       hash: md5
-      md5: c24341b751b27a85210f5d91966cc8d7
-      size: 6208
+      md5: 284a0cec2e3aad8928919e11a78031d9
+      size: 6205
     - path: data/dim_sweep/rmse_vs_d.png
       hash: md5
-      md5: c9a4da58955f1327930b8208ed21a596
-      size: 57546
+      md5: cad5fc2f1a78fa3a700f9ac69295edd2
+      size: 57484
     - path: data/dim_sweep/rmse_vs_d.tikz
       hash: md5
-      md5: 51fc5fef04e309bec8b052dbb0675b4e
-      size: 12037
+      md5: 42305b253dbbcb68c365402d98696021
+      size: 12019
     - path: data/dim_sweep/time_vs_d.png
       hash: md5
-      md5: 9883a91db375f9ea31fc405c7f7ce1b2
-      size: 36723
+      md5: e2eb215a8816aebd0d62ea83a57b75d3
+      size: 31807
     - path: data/dim_sweep/time_vs_d.tikz
       hash: md5
-      md5: 3831db3c028e9360e8098d891b530488
-      size: 11078
+      md5: d738af6dc3fc8bef149dbdb19741c3ff
+      size: 11155
