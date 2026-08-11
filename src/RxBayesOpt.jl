@@ -38,6 +38,7 @@ export setup_po, run_bo_po!
 export setup_baseline_po, run_bo_baseline_po!
 export SVGPState, setup_svgp, svgp_ucb_acquisition, run_bo_svgp!, forecast_svgp
 export VecchiaState, setup_vecchia, vecchia_ucb_acquisition, vecchia_variance_acquisition
+export forecast_vecchia
 export vecchia_loglik
 export load_ett, run_ett_forecast, run_ett_sweeps
 export ss_lmc_filter_smooth

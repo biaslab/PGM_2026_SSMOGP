@@ -8,7 +8,9 @@
 #   SS-LMC (reactive message passing)
 #   KM-LMC (covariance restructuring — full structured (D·N)³ kernel)
 #   SVGP-LMC (M inducing pts; O(N·M²) per fit)
-# Two p-sweeps (at C=N_fixed and at C=N_fixed_big) plus one N-sweep.
+#   NNGP-LMC (Vecchia; m nearest-neighbour conditioning sets)
+# One N-sweep (at p=p_fixed) plus one p-sweep (at C=N_fixed), and an
+# accuracy-vs-cost Pareto plot of the four methods at fixed C.
 #
 # Run via: julia --project=. experiments/partial_obs.jl
 # Or via:  dvc repro partial_obs
@@ -49,6 +51,7 @@ res = run_ett_sweeps(data;
     output_cols = Int.(p["output_cols"]),
     M           = Int(get(p, "M", 64)),
     km_max_N    = Int(get(p, "km_max_N", 4000)),
+    m_vecchia   = Int(get(p, "m_vecchia", 20)),
     output_dir  = output_dir,
 )
 
@@ -65,15 +68,19 @@ metrics = Dict(
     "N_max"               => maximum(Int.(p["Ns"])),
     "km_max_N"            => Int(get(p, "km_max_N", 4000)),
     "M"                   => Int(get(p, "M", 64)),
+    "m_vecchia"           => Int(get(p, "m_vecchia", 20)),
     "ss_raw_mnll_at_Nmax" => _mean(big, "ss_raw", "mnll"),
     "km_mnll_at_Nmax"     => _mean(big, "km",     "mnll"),
     "svgp_mnll_at_Nmax"   => _mean(big, "svgp",   "mnll"),
+    "vec_mnll_at_Nmax"    => _mean(big, "vec",    "mnll"),
     "ss_raw_rmse_at_Nmax" => _mean(big, "ss_raw", "rmse"),
     "km_rmse_at_Nmax"     => _mean(big, "km",     "rmse"),
     "svgp_rmse_at_Nmax"   => _mean(big, "svgp",   "rmse"),
+    "vec_rmse_at_Nmax"    => _mean(big, "vec",    "rmse"),
     "ss_raw_time_at_Nmax" => _mean(big, "ss_raw", "time"),
     "km_time_at_Nmax"     => _mean(big, "km",     "time"),
     "svgp_time_at_Nmax"   => _mean(big, "svgp",   "time"),
+    "vec_time_at_Nmax"    => _mean(big, "vec",    "time"),
 )
 
 _safe(x) = (x isa AbstractFloat && !isfinite(x)) ? nothing : x

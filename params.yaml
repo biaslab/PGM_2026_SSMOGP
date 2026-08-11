@@ -10,7 +10,7 @@ partial_obs:
   # passing on 3D inputs. Compares SS-LMC (msg passing) vs KM-LMC (cov
   # restructuring) vs SVGP-LMC (inducing pts) on forecast MNLL/RMSE and
   # fit+forecast time, swept over window size C (=N) and dropout p.
-  data_path: data/ett/ETTh1.csv
+  data_path: data/etth/ETTh1.csv
   input_cols: [1, 3, 5]         # HUFL, MUFL, LUFL (3D input)
   output_cols: [2, 4, 6, 7]     # HULL, MULL, LULL, OT (4D output)
   D: 4                          # length(output_cols)
@@ -25,6 +25,7 @@ partial_obs:
   ls: [0.5, 1.0, 2.0]           # length-scales in normalized chain-distance units
   sigma2s: [1.0, 1.0, 1.0]
   M: 64                         # SVGP-LMC inducing points (per latent, shared across Q)
+  m_vecchia: 20                 # NNGP/Vecchia-LMC conditioning locations (m·D = 80 scalars ≈ M)
 
 quadrature:
   # Bayesian Quadrature on 1D synthetic benchmark (sinusoidal latents)
