@@ -44,6 +44,51 @@ function save_plot(plot_fn::Function, base_path; tikz::Bool=true)
 end
 
 """
+    SWEEP_PLOT_KW
+
+Shared source-canvas style for the paper's sweep figures (`_plot_ett_sweep`,
+`_plot_dim_sweep`). All of them are `\resizebox`d to the same width in the
+paper, so they must share one canvas and one set of font sizes or the text comes
+out at different scales across figures.
+
+Fonts are far above the Plots defaults (8pt ticks / 11pt guides) because the
+paper `\resizebox`es this 560pt-wide canvas down to `.32\textwidth` (~133pt), a
+~4.2x reduction that shrinks the labels with it: a default 8pt tick would render
+at under 2pt. Sizes here are chosen so ticks land near 6pt and axis labels near
+7pt on the printed page, which makes the standalone PNGs look absurdly
+large-lettered and the typeset figures legible. Keep `size` and the font sizes in
+step: changing one without the other changes the printed text size.
+"""
+const SWEEP_PLOT_KW = (; size=(560, 380), left_margin=8Plots.mm,
+                       bottom_margin=6Plots.mm, tickfontsize=24,
+                       guidefontsize=28, legendfontsize=20, titlefontsize=26)
+
+"""
+    _log_ticks(lo, hi) -> (values, labels) or :auto
+
+Ticks for a log axis spanning `[lo, hi]`: whole decades when at least three fall
+inside the range, otherwise the 1-2-5 ladder.
+
+Labels are returned explicitly, as plain decimals. Plots' default labels a log
+axis by exponent, which gives `10^{0.25}` for a sub-decade range and, worse,
+`10^{0.30103}` for a 1-2-5 tick — the exponent of the tick value rather than the
+value itself. Handing the backend literal strings sidesteps both.
+"""
+function _log_ticks(lo::Real, hi::Real)
+    (lo > 0 && hi > lo) || return :auto
+    _fmt(v) = isinteger(v) ? string(Int(v)) : string(v)
+    # `10.0^e` carries float noise (10.0^-2 is 0.010000000000000002), which would
+    # print verbatim as a tick label; round to the ladder value it stands for.
+    _tick(m, e) = round(m * 10.0^e; sigdigits=2)
+    e0, e1 = floor(Int, log10(lo)), ceil(Int, log10(hi))
+    dec = [_tick(1, e) for e in e0:e1 if lo <= _tick(1, e) <= hi]
+    length(dec) >= 3 && return (dec, _fmt.(dec))
+    fine = [_tick(m, e) for e in (e0 - 1):e1 for m in (1, 2, 5)]
+    t = filter(v -> lo <= v <= hi, fine)
+    isempty(t) ? :auto : (t, _fmt.(t))
+end
+
+"""
     plot_bo_step(step, k, state, acq, Ytrue, cfg) -> Plot
 
 Generate the 3-panel BO visualization for a single step.

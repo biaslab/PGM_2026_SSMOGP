@@ -38,6 +38,9 @@ src/
   benchmarks.jl           — Standard benchmark functions (Hartmann-6, environmental model, sensor network)
   ett.jl                  — ETTh multi-dim-input regression under feature dropout: SS-LMC (RxInfer + raw Kalman) vs KM-LMC vs SVGP-LMC
   ss_lmc_raw.jl           — Hand-coded Kalman filter + RTS smoother for the additive multi-output state-space LMC (no RxInfer)
+  vecchia.jl              — Vecchia/NNGP LMC baseline (maxmin ordering, m nearest-neighbour conditioning sets)
+test/
+  test_vecchia.jl         — Correctness tests for the Vecchia baseline
 ```
 
 ## Code Map
@@ -105,9 +108,11 @@ src/
 - `forecast_ss_raw(setup, …)` — SS-LMC forecast via the hand-coded Kalman filter + RTS smoother in `ss_lmc_raw.jl` (same SS blocks; no RxInfer)
 - `forecast_km(setup, …)` — KM-LMC forecast via cov restructuring on the full (D·N)² LMC kernel over chain-ordered inputs
 - `forecast_svgp(setup, …, M; Z_seed)` — SVGP-LMC forecast; K-means inducing points drawn from training chain positions only
+- `forecast_vecchia(setup, …, m)` — NNGP/Vecchia-LMC forecast (`src/vecchia.jl`); each chain position conditions on the observed outputs at its `m` nearest locations in the full input space. Timed region covers neighbour search (O(C²·M), brute force) + local solves (O(C·(m·D)³))
 - `_forecast_mnll` / `_test_rmse` — metrics over the chain-position test indices `setup.test_idx_chain`
 - `run_ett_forecast(data, N, p, seed; D, Q, ℓs, σ2s, R_diag_init, input_cols, output_cols, M)` — one train(first N rows)/forecast(next N rows) comparison; consumes 2·N rows total
-- `run_ett_sweeps(data; Ns, ps, N_fixed, N_fixed_big, p_fixed, seeds, …)` — three sweeps: N (at `p_fixed`), p (at `N_fixed`), and p at the high-C window `N_fixed_big`; saves comparison.json + time/MNLL/RMSE plots (with `_at_Cbig` suffix for the high-C p-sweep)
+- `run_ett_sweeps(data; Ns, ps, N_fixed, p_fixed, seeds, …)` — two sweeps: N (at `p_fixed`) and p (at `N_fixed`); saves comparison.json + time/MNLL/RMSE sweep plots + the `pareto` accuracy-vs-cost plot
+- `_plot_ett_pareto(rows, output_dir, Cs, p_fixed, km_max_N)` — accuracy-vs-cost Pareto scatter of all four methods at fixed C, as one `pareto.{png,tikz}` with RMSE on the top row and MNLL on the bottom, panelled over the two largest C where KM-LMC fits in memory (so every panel has a complete four-method front). Dominated methods hollow, non-dominated joined by a dashed front. Panels are separate fronts by design: the held-out test block moves with C, so error levels are not comparable across panels
 
 ### benchmarks.jl
 - `hartmann6(x)` — Standard Hartmann 6-dimensional function on [0,1]^6, global max ≈ 3.3224
@@ -123,7 +128,7 @@ src/
 
 ### experiments/partial_obs.jl
 - ETTh multi-dim-input regression under random per-feature dropout. Inputs: HUFL,MUFL,LUFL (d=3). Outputs: HULL,MULL,LULL,OT (D=4, Q=3). First N rows train (with dropout on outputs); next N rows fully held out. NN-chain ordering on the 3D inputs lets SS-LMC handle multi-dim.
-- 3-way: SS-LMC (message passing) vs KM-LMC (cov restructuring) vs SVGP-LMC (inducing pts), swept over window C (=N), dropout p, and a second p-sweep at a higher C (`N_fixed_big`)
+- 4-way: SS-LMC (message passing) vs KM-LMC (cov restructuring) vs SVGP-LMC (inducing pts) vs NNGP-LMC (Vecchia, `m_vecchia` nearest locations), swept over window C (=N) and dropout p
 - Demonstrates SS-LMC matches KM-LMC accuracy on real multi-dim data while being faster at large N (O(N) vs O((D·N)³))
 
 ### experiments/dim_sweep.jl
@@ -158,7 +163,7 @@ View metrics: `dvc metrics show`
 Configuration is in `params.yaml`. Changes to params or source code trigger re-runs via DVC.
 
 ### Stages
-1. **partial_obs** — ETTh multi-dim-input regression under feature dropout (3D input from useful loads, 4D output of useless loads + OT); SS-LMC vs KM-LMC vs SVGP-LMC. Sweeps over N, p (at low C), and p (at high C). Outputs: `data/partial_obs/`
+1. **partial_obs** — ETTh multi-dim-input regression under feature dropout (3D input from useful loads, 4D output of useless loads + OT); SS-LMC vs KM-LMC vs SVGP-LMC vs NNGP-LMC. Sweeps over N and p, plus the accuracy-vs-cost Pareto plots. Data lives at `data/etth/ETTh1.csv`. Outputs: `data/partial_obs/`
 2. **dim_sweep** — Input-dimension sweep on synthetic sensor network (d ∈ {2,4,8,16,32}, D=3, N=200, 5 seeds). Outputs: `data/dim_sweep/`
 
 ## Known Issues / Improvement Opportunities

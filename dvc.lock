@@ -192,74 +192,127 @@ stages:
   partial_obs:
     cmd: julia --project=. experiments/partial_obs.jl
     deps:
+    - path: data/etth/ETTh1.csv
+      hash: md5
+      md5: 8381763947c85f4be6ac456c508460d6
+      size: 2589657
     - path: experiments/partial_obs.jl
       hash: md5
-      md5: 6f61b848fd84459c7bd028dad8a56ae2
-      size: 2614
+      md5: ad701fcf511ed59e820153f67af81b7f
+      size: 3824
     - path: src
       hash: md5
-      md5: 007c22ef0c80839c958586fa1b33385c.dir
-      size: 76257
-      nfiles: 13
+      md5: 486f5a7f8574679c064ef39e7cf31be9.dir
+      size: 162532
+      nfiles: 18
     params:
       params.yaml:
         partial_obs:
-          N: 500
-          d: 4
-          D: 12
-          Q: 6
-          n_spatial: 3
-          n_temporal: 4
-          steps: 10
-          n_seed: 5
-          beta: 2.0
+          data_path: data/etth/ETTh1.csv
+          input_cols:
+          - 1
+          - 3
+          - 5
+          output_cols:
+          - 2
+          - 4
+          - 6
+          - 7
+          D: 4
+          Q: 3
           R_diag_init: 0.2
-          log_every: 10
+          Ns:
+          - 500
+          - 1000
+          - 2000
+          - 4000
+          - 8000
+          p_fixed: 0.3
+          ps:
+          - 0.1
+          - 0.3
+          - 0.5
+          - 0.7
+          N_fixed: 2000
+          km_max_N: 2000
           seeds:
           - 0
           - 1
           - 2
           - 3
           - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
           ls:
+          - 0.5
           - 1.0
-          - 1.5
           - 2.0
-          - 2.5
-          - 3.0
-          - 3.5
           sigma2s:
-          - 3.0
-          - 3.0
-          - 2.0
-          - 2.0
           - 1.0
           - 1.0
+          - 1.0
+          M: 64
+          m_vecchia: 20
     outs:
     - path: data/partial_obs/comparison.json
       hash: md5
-      md5: 6d15722229723375cd85e2a2c637416b
-      size: 13653
-    - path: data/partial_obs/convergence.png
-      hash: md5
-      md5: 927de34aac368c67e0f33d1c3597da74
-      size: 15459
-    - path: data/partial_obs/convergence.tikz
-      hash: md5
-      md5: 4f2735a884c473d1ea2a3f88e31a4192
-      size: 14472
+      md5: dd52d749c07edbd4bd57685f203d639a
+      size: 49282
     - path: data/partial_obs/metrics.json
       hash: md5
-      md5: 2ac00bc5f24d903e8d45f0107dc2c4f4
-      size: 343
-    - path: data/partial_obs/timing.png
+      md5: ab1e4c338376c4e2073e5c7f11583da4
+      size: 552
+    - path: data/partial_obs/mnll_vs_N.png
       hash: md5
-      md5: b86faafe1f665c35afa4086eddb88a91
-      size: 12183
-    - path: data/partial_obs/timing.tikz
+      md5: e28afa9e38c6ba4c855dbbf0f42777c0
+      size: 53268
+    - path: data/partial_obs/mnll_vs_N.tikz
       hash: md5
-      md5: 2c2b9bd3df03dd05a1790636aa52930b
-      size: 6360
+      md5: c837b9ff7554aa85056ece5c07b9a561
+      size: 6569
+    - path: data/partial_obs/mnll_vs_p.png
+      hash: md5
+      md5: 3a7560b3cf2af05d8dab00cd6508aac3
+      size: 35283
+    - path: data/partial_obs/mnll_vs_p.tikz
+      hash: md5
+      md5: 98b7fb4dfc286b3baba3e39e5af4f21f
+      size: 6384
+    - path: data/partial_obs/pareto.png
+      hash: md5
+      md5: b1c30db3c9eeaecd9442f75d2caae167
+      size: 66872
+    - path: data/partial_obs/pareto.tikz
+      hash: md5
+      md5: b03c312ad2a18d1a8bd98e1b17b88b04
+      size: 38486
+    - path: data/partial_obs/rmse_vs_N.png
+      hash: md5
+      md5: b19c857f4477e22ce26fd2a48138283f
+      size: 38930
+    - path: data/partial_obs/rmse_vs_N.tikz
+      hash: md5
+      md5: 99140e60dd0b0b62b53090808d37fb5c
+      size: 6430
+    - path: data/partial_obs/rmse_vs_p.png
+      hash: md5
+      md5: b1b50a16e897d918187d80a7bf3d1d09
+      size: 35629
+    - path: data/partial_obs/rmse_vs_p.tikz
+      hash: md5
+      md5: fbe43822a57a5ab9af7815d5fe6e7883
+      size: 6363
+    - path: data/partial_obs/time_vs_N.png
+      hash: md5
+      md5: 02f6373b0bebd722f99ccf94ea46add8
+      size: 39013
+    - path: data/partial_obs/time_vs_p.png
+      hash: md5
+      md5: ae4cded46107f732b1adf90528a0a36b
+      size: 34587
   quadrature:
     cmd: julia --project=. experiments/quadrature.jl
     deps:
@@ -376,3 +429,104 @@ stages:
       hash: md5
       md5: 98f8fcef6428465978452dc1ec7b4b2f
       size: 9012
+  dim_sweep:
+    cmd: julia --project=. experiments/dim_sweep.jl
+    deps:
+    - path: experiments/dim_sweep.jl
+      hash: md5
+      md5: e32ba47eadb6eb20cbb0b526e5f514ff
+      size: 3445
+    - path: src
+      hash: md5
+      md5: 486f5a7f8574679c064ef39e7cf31be9.dir
+      size: 162532
+      nfiles: 18
+    params:
+      params.yaml:
+        dim_sweep:
+          ds:
+          - 2
+          - 4
+          - 8
+          - 16
+          - 32
+          D: 3
+          Q: 2
+          N: 2000
+          train_frac: 0.5
+          steps: 1
+          n_seed: 5
+          beta: 2.0
+          R_diag_init: 0.1
+          log_every: 20
+          seeds:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          ls:
+          - 1.0
+          - 2.0
+          sigma2s:
+          - 2.0
+          - 1.0
+          M_svgp: 64
+          m_vecchia: 20
+    outs:
+    - path: data/dim_sweep/chain_quality_vs_d.png
+      hash: md5
+      md5: 37cc37a828bf1255ce7c7ad6819eee19
+      size: 33738
+    - path: data/dim_sweep/chain_quality_vs_d.tikz
+      hash: md5
+      md5: 853de7f482ec16495de7fe8b9bf1d602
+      size: 8029
+    - path: data/dim_sweep/comparison.json
+      hash: md5
+      md5: 0638616d42ba99bb0e56d24bd85d3c5b
+      size: 17897
+    - path: data/dim_sweep/metrics.json
+      hash: md5
+      md5: dd86bcf88779ce3a7423af009b539711
+      size: 2907
+    - path: data/dim_sweep/mnll_gap_vs_d.png
+      hash: md5
+      md5: bfa59780d385e21a744f9bd86e071f98
+      size: 30214
+    - path: data/dim_sweep/mnll_gap_vs_d.tikz
+      hash: md5
+      md5: b90bcd275c0f730f0cf87e78933b8868
+      size: 6165
+    - path: data/dim_sweep/mnll_vs_d.png
+      hash: md5
+      md5: 1edfd0389981a9013be85e7272c2d3a0
+      size: 41564
+    - path: data/dim_sweep/mnll_vs_d.tikz
+      hash: md5
+      md5: 86b62dfbccf0738b0428a1d5be14380f
+      size: 11267
+    - path: data/dim_sweep/rmse_gap_vs_d.png
+      hash: md5
+      md5: a8c14b19be465ef27a32e914e6804c96
+      size: 31346
+    - path: data/dim_sweep/rmse_gap_vs_d.tikz
+      hash: md5
+      md5: c24341b751b27a85210f5d91966cc8d7
+      size: 6208
+    - path: data/dim_sweep/rmse_vs_d.png
+      hash: md5
+      md5: c9a4da58955f1327930b8208ed21a596
+      size: 57546
+    - path: data/dim_sweep/rmse_vs_d.tikz
+      hash: md5
+      md5: 51fc5fef04e309bec8b052dbb0675b4e
+      size: 12037
+    - path: data/dim_sweep/time_vs_d.png
+      hash: md5
+      md5: 9883a91db375f9ea31fc405c7f7ce1b2
+      size: 36723
+    - path: data/dim_sweep/time_vs_d.tikz
+      hash: md5
+      md5: 3831db3c028e9360e8098d891b530488
+      size: 11078

@@ -6,7 +6,19 @@
 # NN-chain ordering used by SS-LMC becomes a weaker heuristic, so this sweep
 # probes how gracefully the chain approximation degrades.
 #
-# For each (d, seed) a single 50/50 train/test split is drawn, both methods run
+# Four methods share the same LMC prior (W, ℓs, σ2s, R):
+#   ss   — SS-LMC, message passing along the 1-D nearest-neighbour chain
+#   km   — KM-LMC, exact dense kernel matrix (the accuracy ceiling)
+#   svgp — SVGP-LMC, M inducing points
+#   vec  — Vecchia/NNGP-LMC, conditioning on m nearest neighbours in the full
+#          M-dimensional input space (see `src/vecchia.jl`)
+#
+# `vec` is the sharpest comparison for this sweep: like SS-LMC it is built on a
+# nearest-neighbour ordering, but it keeps the M-dimensional geometry instead of
+# compressing it into one chain, so the ss-vs-vec gap isolates the cost of the
+# chain compression specifically (rather than of sparsity in general).
+#
+# For each (d, seed) a single 50/50 train/test split is drawn, every method runs
 # one inference pass, and held-out RMSE/MNLL are recorded alongside the raw
 # NN-chain quality so any accuracy gap can be correlated with chain stretch.
 
@@ -92,16 +104,17 @@ end
 """
     run_dim_sweep(cfg_template, eval_fn_factory; ds, seeds, train_frac, output_dir) -> Vector{Dict}
 
-Sweep held-out posterior quality over input dimensions `ds`, comparing SS-LMC and
-the exact kernel-matrix LMC (KM-LMC). `eval_fn_factory(d)` must return a function
-whose input is a length-`d` vector. The other config fields (`D`, `Q`, `N`, etc.)
-are held fixed.
+Sweep held-out posterior quality over input dimensions `ds`, comparing SS-LMC,
+the exact kernel-matrix LMC (KM-LMC), SVGP-LMC (`M_svgp` inducing points per
+latent) and Vecchia/NNGP-LMC (`m_vecchia` nearest neighbouring locations).
+`eval_fn_factory(d)` must return a function whose input is a length-`d` vector.
+The other config fields (`D`, `Q`, `N`, etc.) are held fixed.
 
 For each (d, seed):
   1. Build a config with this `d` and `seed`.
   2. `setup_experiment` once, then draw a `train_frac` train/test split.
-  3. SS-LMC: one `infer` pass; KM-LMC: one kernel-matrix prediction.
-  4. Compute held-out RMSE and MNLL for both methods.
+  3. Run one inference pass per method against that identical split.
+  4. Compute held-out RMSE and MNLL for every method.
   5. Record `nn_chain_quality(Xo)` and per-method inference time.
 
 Writes `comparison.json` and rendered figures to `output_dir`.
@@ -110,13 +123,13 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                       ds::Vector{Int}=[2, 4, 8, 16, 32], seeds=0:4,
                       train_frac::Float64=0.5,
                       M_svgp::Int=64,
+                      m_vecchia::Int=20,
                       output_dir::String="data/dim_sweep")
     mkpath(output_dir)
     all_results = Dict{String, Any}[]
 
-    # Warm up JIT (RxInfer compilation + first-call autodiff dispatch) so the
-    # first recorded (d, seed) cell isn't inflated by compile time. We discard
-    # the result; cost is one extra inference pass at the smallest d.
+    # Warm up JIT so the first recorded (d, seed) cell isn't inflated by compile
+    # time. We discard the result; cost is one extra pass at the smallest d.
     @info "Warming up (compilation)…"
     let d = first(ds)
         cfg = ExperimentConfig(;
@@ -132,17 +145,13 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
         split_warm = _train_test_split(sd_warm, cfg, train_frac, MersenneTwister(0))
         try
             po_warm = setup_po(cfg, split_warm.sd)
-            res_warm = infer(
-                model=additive_gp_po(
-                    P=po_warm.blocks.P, A=po_warm.blocks.A,
-                    Q=po_warm.blocks.Q, H=po_warm.blocks.H,
-                    τ=po_warm.τ, e_vecs=po_warm.e_vecs, N=cfg.N, D=cfg.D),
-                data=(Y=po_warm.Y_flat,),
-                options=(limit_stack_depth=1000,))
-            variance_acquisition(res_warm, po_warm, cfg, cfg.N)
+            ss_lmc_filter_smooth(po_warm.blocks.P, po_warm.blocks.A, po_warm.blocks.Q,
+                                 po_warm.blocks.H, po_warm.τ, po_warm.Y_flat,
+                                 cfg.N, cfg.D)
             mask_warm = _generate_obs_mask(cfg, cfg.N, MersenneTwister(1000))
             baseline_po_variance_acquisition(setup_baseline_po(cfg, split_warm.sd, mask_warm), cfg)
             _lmc_svgp_predict(setup_svgp(cfg, split_warm.sd; M=M_svgp, Z_seed=9999))
+            _lmc_vecchia_predict(setup_vecchia(cfg, split_warm.sd; m=m_vecchia))
         catch e
             @warn "Warmup pass failed (continuing anyway)" exception=e
         end
@@ -171,26 +180,34 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                                       MersenneTwister(seed + 7777))
             sd, test_idx = split.sd, split.test_idx
 
-            # ── SS-LMC: single inference pass ──
+            # ── SS-LMC: one Kalman filter + RTS smoother pass ──
+            # Uses the hand-coded smoother of `ss_lmc_raw.jl`, as `src/ett.jl` does,
+            # rather than RxInfer's generic message passing. Same model and same LMC
+            # prior; the difference is purely numerical. At low input dimension the
+            # chain is tight, so A_i -> I and Q_i hits the PSD clamp in
+            # `matern32_blocks_from_Δ`; the generic Gaussian updates lose precision
+            # there (d=2, seed 4 returned RMSE 8.5e7, against 0.062 from this path,
+            # with every other cell agreeing to 5 significant figures), whereas the
+            # Joseph-form updates here stay symmetric and PSD. Timing the smoother
+            # alone also makes this panel comparable to the ETT study, which reports
+            # the same raw-Kalman cost.
             @info "Running SS-LMC (d=$d, seed=$seed)"
             po_state = setup_po(cfg, sd)
-            ss_rmse = NaN; ss_mnll = NaN
-            ss_time = @elapsed begin
-                try
-                    res = infer(
-                        model=additive_gp_po(
-                            P=po_state.blocks.P, A=po_state.blocks.A,
-                            Q=po_state.blocks.Q, H=po_state.blocks.H,
-                            τ=po_state.τ, e_vecs=po_state.e_vecs, N=N, D=D),
-                        data=(Y=po_state.Y_flat,),
-                        options=(limit_stack_depth=1000,))
-                    acq = variance_acquisition(res, po_state, cfg, N)
-                    ss_rmse = _compute_rmse_test(acq.μ_pred, sd.Ytrue, test_idx, D)
-                    ss_mnll = _compute_mnll_obs(acq.μ_pred, acq.σ_pred, sd.Ytrue, test_idx,
-                                                sd.σy, cfg.R_diag_init, D)
-                catch e
-                    @warn "SS-LMC inference failed (d=$d, seed=$seed)" exception=e
+            ss_rmse = NaN; ss_mnll = NaN; ss_time = NaN
+            try
+                local pred
+                ss_time = @elapsed begin
+                    pred = ss_lmc_filter_smooth(po_state.blocks.P, po_state.blocks.A,
+                                                po_state.blocks.Q, po_state.blocks.H,
+                                                po_state.τ, po_state.Y_flat, N, D)
                 end
+                μ_ss = [pred.μ_pred[i] .* sd.σy .+ sd.μy for i in 1:N]
+                σ_ss = [pred.σ_pred[i] .* sd.σy           for i in 1:N]
+                ss_rmse = _compute_rmse_test(μ_ss, sd.Ytrue, test_idx, D)
+                ss_mnll = _compute_mnll_obs(μ_ss, σ_ss, sd.Ytrue, test_idx,
+                                            sd.σy, cfg.R_diag_init, D)
+            catch e
+                @warn "SS-LMC smoothing failed (d=$d, seed=$seed)" exception=e
             end
 
             # ── KM-LMC: single kernel-matrix prediction ──
@@ -228,7 +245,27 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                 end
             end
 
-            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) svgp_rmse=round(svgp_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4) svgp_mnll=round(svgp_mnll; digits=4)
+            # ── Vecchia/NNGP-LMC: local kriging on m nearest observed neighbours ──
+            # Neighbour search is part of the Vecchia wall-clock budget, matching
+            # how K-means inducing selection is charged to SVGP.
+            @info "Running Vecchia (d=$d, seed=$seed)"
+            vec_rmse = NaN; vec_mnll = NaN
+            vec_time = @elapsed begin
+                try
+                    vec_state = setup_vecchia(cfg, sd; m=m_vecchia)
+                    pred = _lmc_vecchia_predict(vec_state)
+                    # Rescale to original output scale (matches the other paths).
+                    μ_orig = [pred.μ_pred[i] .* sd.σy .+ sd.μy for i in 1:N]
+                    σ_orig = [pred.σ_pred[i] .* sd.σy           for i in 1:N]
+                    vec_rmse = _compute_rmse_test(μ_orig, sd.Ytrue, test_idx, D)
+                    vec_mnll = _compute_mnll_obs(μ_orig, σ_orig, sd.Ytrue,
+                                                 test_idx, sd.σy, cfg.R_diag_init, D)
+                catch e
+                    @warn "Vecchia prediction failed (d=$d, seed=$seed)" exception=e
+                end
+            end
+
+            @info "Result (d=$d, seed=$seed)" ss_rmse=round(ss_rmse; digits=4) km_rmse=round(km_rmse; digits=4) svgp_rmse=round(svgp_rmse; digits=4) vec_rmse=round(vec_rmse; digits=4) ss_mnll=round(ss_mnll; digits=4) km_mnll=round(km_mnll; digits=4) svgp_mnll=round(svgp_mnll; digits=4) vec_mnll=round(vec_mnll; digits=4)
 
             push!(all_results, Dict(
                 "d"     => d,
@@ -243,6 +280,7 @@ function run_dim_sweep(cfg_template::ExperimentConfig, eval_fn_factory;
                 "ss"   => Dict("rmse" => ss_rmse,   "mnll" => ss_mnll,   "time" => ss_time),
                 "km"   => Dict("rmse" => km_rmse,   "mnll" => km_mnll,   "time" => km_time),
                 "svgp" => Dict("rmse" => svgp_rmse, "mnll" => svgp_mnll, "time" => svgp_time),
+                "vec"  => Dict("rmse" => vec_rmse,  "mnll" => vec_mnll,  "time" => vec_time),
             ))
         end
     end
@@ -264,27 +302,34 @@ end
     _plot_dim_sweep(results, ds, output_dir)
 
 Render the dim_sweep figures: held-out RMSE vs d, held-out MNLL vs d,
-fit+predict time vs d (log-y), and raw NN-chain quality vs d. Each plot
-overlays SS-LMC, KM-LMC, and SVGP-LMC where applicable.
+fit+predict time vs d (log-y), raw NN-chain quality vs d, and the paired
+SS-LMC-minus-KM-LMC gap in RMSE and MNLL vs d. The first three overlay
+SS-LMC, KM-LMC, SVGP-LMC, and NNGP-LMC where applicable.
 """
 function _plot_dim_sweep(results, ds, output_dir)
-    methods = ["ss", "km", "svgp"]
-    labels  = ["SS-LMC", "KM-LMC", "SVGP-LMC"]
-    colors  = [:blue, :red, :green]
+    all_methods = ["ss", "km", "svgp", "vec"]
+    all_labels  = ["SS-LMC", "KM-LMC", "SVGP-LMC", "NNGP-LMC"]
+    all_colors  = [:blue, :red, :green, :purple]
+    # Keep only methods actually present, so an archived `comparison.json` from
+    # before a baseline existed can be re-rendered without erroring.
+    keep    = [i for i in eachindex(all_methods)
+               if any(haskey(r, all_methods[i]) for r in results)]
+    methods = all_methods[keep]; labels = all_labels[keep]; colors = all_colors[keep]
 
     _nanmean(x)   = (v = filter(!isnan, x); isempty(v) ? NaN : mean(v))
     _nanstd(x)    = (v = filter(!isnan, x); length(v) > 1 ? std(v) : 0.0)
 
     # Match the ETT sweep figures' export style (src/ett.jl `_plot_ett_sweep`):
-    # a plain ~560x380 canvas with default fonts and lw=2, NOT the tiny
-    # single-column TuePlots theme. Both figure sets are `\resizebox`d to the
-    # same width in the paper, so they must share the same source canvas/fonts.
-    plot_kw = (; size=(560, 380), left_margin=8Plots.mm, bottom_margin=6Plots.mm)
+    # both figure sets are `\resizebox`d to the same width in the paper, so they
+    # share one canvas and font scale via `SWEEP_PLOT_KW` (src/visualization.jl).
+    plot_kw = SWEEP_PLOT_KW
 
-    function _metric_vs_d(metric, ylabel, fname; legendpos=:topleft, yscale=:identity)
+    function _metric_vs_d(metric, ylabel, fname; legendpos=:topleft, yscale=:identity,
+                          legend_cols=1)
         save_plot(joinpath(output_dir, fname)) do
             p = plot(; xlabel="Input dimension M", ylabel=ylabel,
-                     legend=legendpos, xscale=:log2, yscale=yscale, plot_kw...)
+                     legend=legendpos, legend_columns=legend_cols,
+                     xscale=:log2, yscale=yscale, plot_kw...)
             for (m, lab, col) in zip(methods, labels, colors)
                 means = Float64[]; stds = Float64[]
                 for d in ds
@@ -303,14 +348,42 @@ function _plot_dim_sweep(results, ds, output_dir)
         end
     end
 
+    # The paper composes these three panels into one float, so the legend goes on
+    # the left-most panel only; repeating it three times just costs plot area.
     _metric_vs_d("rmse", "Held-out RMSE",        "rmse_vs_d")
-    _metric_vs_d("mnll", "Held-out MNLL",        "mnll_vs_d")
-    _metric_vs_d("time", "Fit+predict time (s)", "time_vs_d"; yscale=:log10)
+    _metric_vs_d("mnll", "Held-out MNLL",        "mnll_vs_d"; legendpos=false)
+    _metric_vs_d("time", "Fit+predict time (s)", "time_vs_d";
+                 yscale=:log10, legendpos=false)
+
+    # Approximation gap against the exact posterior, as SS-LMC minus KM-LMC.
+    # The difference is taken *within* a seed before averaging: the difficulty of
+    # a particular draw is common to both methods, so pairing cancels it and
+    # leaves a far tighter band than differencing the per-M means would.
+    function _gap_vs_d(metric, ylabel, fname)
+        save_plot(joinpath(output_dir, fname)) do
+            means = Float64[]; stds = Float64[]
+            for d in ds
+                runs = filter(r -> r["d"] == d, results)
+                gaps = [r["ss"][metric] - r["km"][metric] for r in runs]
+                push!(means, _nanmean(gaps)); push!(stds, _nanstd(gaps))
+            end
+            p = plot(; xlabel="Input dimension M", ylabel=ylabel, legend=false,
+                     xscale=:log2, plot_kw...)
+            hline!(p, [0.0], lw=1, ls=:dash, color=:gray, label="")
+            plot!(p, ds, means, ribbon=stds, fillalpha=0.15, lw=2, marker=:circle,
+                  label="", color=:blue)
+            p
+        end
+    end
+    # Short labels: at SWEEP_PLOT_KW's font size a longer ylabel overruns the
+    # left margin and is clipped. The sign convention is given in the caption.
+    _gap_vs_d("rmse", "RMSE gap", "rmse_gap_vs_d")
+    _gap_vs_d("mnll", "MNLL gap", "mnll_gap_vs_d")
 
     # Chain quality vs d
     save_plot(joinpath(output_dir, "chain_quality_vs_d")) do
-        p = plot(; xlabel="Input dimension M", ylabel="Chain Δ (consecutive distance)",
-                 legend=:topleft, xscale=:log2, theme_kw...)
+        p = plot(; xlabel="Input dimension M", ylabel="Chain Δ",
+                 legend=:topleft, xscale=:log2, plot_kw...)
         mean_curve = Float64[]; mean_std = Float64[]
         max_curve  = Float64[]; max_std  = Float64[]
         for d in ds
